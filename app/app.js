@@ -31,9 +31,11 @@ function clearActionError() {
     showActionError('');
 }
 var targetDirty = false,
-    receiver = 'Hyperion';
+    receiver = 'Hyperion',
+    output = 'json';
 var profileDirty = false,
     profile = 'auto',
+    geometry = 'rim',
     advancedProfile = false;
 var profileNames = {
     auto: 'Auto',
@@ -41,9 +43,15 @@ var profileNames = {
     average: 'Average (uniform)',
     custom: 'Custom model'
 };
+var geometryNames = {
+    rim: 'Perimeter',
+    rectangles: 'Region rectangles'
+};
 
 function showProfile() {
     document.getElementById('profile').textContent = 'Profile: ' + profileNames[profile];
+    document.getElementById('geometry').textContent = 'Geometry: ' + geometryNames[geometry];
+    document.getElementById('geometry').disabled = profile !== 'custom';
     var visible = profile === 'custom' && advancedProfile;
     document.getElementById('customEditor').style.display = visible ? 'block' : 'none';
     document.getElementById('customProfile').disabled = !visible;
@@ -113,13 +121,18 @@ function display(result) {
     }
     if (result.calibrationProfile && !profileDirty) {
         profile = result.calibrationProfile;
+        geometry = result.customGeometry === 'rectangles' ? 'rectangles' : 'rim';
         showProfile();
-        document.getElementById('customProfile').value = JSON.stringify({
+        var stored = {
             model: result.customModel || result.tvModel || 'TV-MODEL',
             points: result.customPoints && result.customPoints.length ? result.customPoints : []
-        }, null, 2);
+        };
+        if (result.customGeometry === 'rectangles') stored.geometry = 'rectangles';
+        else if (result.customRectangles && result.customRectangles.length) stored.geometry = 'rim';
+        if (result.customRectangles && result.customRectangles.length) stored.rectangles = result.customRectangles;
+        document.getElementById('customProfile').value = JSON.stringify(stored, null, 2);
     }
-    if (result.effectiveCalibration) document.getElementById('profileStatus').textContent = 'TV: ' + (result.tvModel || 'Unknown') + ' · Active profile: ' + profileNames[result.effectiveCalibration] + (result.effectiveCalibration === 'average' ? ' · Spatial calibration needed for this model' : '');
+    if (result.effectiveCalibration) document.getElementById('profileStatus').textContent = 'TV: ' + (result.tvModel || 'Unknown') + ' · Active profile: ' + profileNames[result.effectiveCalibration] + (result.effectiveCalibration === 'custom' ? ' · ' + geometryNames[result.spatialGeometry === 'rectangles' ? 'rectangles' : 'rim'] : '') + (result.effectiveCalibration === 'average' ? ' · Spatial calibration needed for this model' : '');
 
     if (result.host && !targetDirty) {
         document.getElementById('host').value = result.host;
@@ -128,6 +141,8 @@ function display(result) {
         document.getElementById('captureInterval').value = result.captureIntervalMs || 50;
         receiver = result.receiver;
         document.getElementById('receiver').textContent = 'Receiver: ' + receiver;
+        output = result.output || 'json';
+        document.getElementById('output').textContent = 'Output: ' + (output === 'flatbuffer' ? 'FlatBuffer, all instances' : 'JSON, one instance');
     }
     document.getElementById('token').placeholder = result.tokenSet ? 'Saved token (leave blank to keep)' : 'No token saved';
     if (result.endpoint) document.getElementById('endpoint').textContent = result.receiver + ' · ' + result.endpoint + ' · Priority 149 · 10 updates per second';
@@ -156,9 +171,11 @@ function display(result) {
     if (result.piccapHandover && !result.piccapTargetCompatible) document.getElementById('status').textContent += ' · Auto PicCap unavailable for remote IPv6 target';
     if (result.colorValid && result.effectiveCalibration === 'average') document.getElementById('status').textContent += ' · Average color output';
     if (result.colorValid) document.getElementById('status').textContent += result.spatialOutput ? ' · ' + result.ledCount + ' LEDs from 16 color regions' + (result.receiver === 'HyperHDR' ? ' · Spatial image output' : '') : ' · Output RGB: ' + result.outputColor.join(', ');
+    if (result.output === 'flatbuffer') document.getElementById('status').textContent += result.flatbufferConnected ? ' · FlatBuffer connected, every LED instance' : ' · FlatBuffer connecting';
     else if (result.returnValue !== false) document.getElementById('status').textContent += ' · No current color output';
     if (result.blackBarDetection && result.running) document.getElementById('status').textContent += result.letterboxDetected ? ' · Top/bottom black bars detected' : ' · Full-screen capture';
     if (result.spatialInterpolation) document.getElementById('status').textContent += ' · Smooth color transitions';
+    if (result.spatialGeometry === 'rectangles') document.getElementById('status').textContent += ' · Region rectangles (1/area)';
     if (result.holdingColors) document.getElementById('status').textContent += ' · Holding last valid colors (missing data)';
     if (result.sourceFade) document.getElementById('status').textContent += ' · Blending capture sources';
     if (result.retryScheduled) document.getElementById('status').textContent += ' · Retrying receiver or capture startup';
@@ -309,6 +326,11 @@ document.getElementById('receiver').onclick = function() {
     this.textContent = 'Receiver: ' + receiver;
     targetDirty = true;
 };
+document.getElementById('output').onclick = function() {
+    output = output === 'flatbuffer' ? 'json' : 'flatbuffer';
+    this.textContent = 'Output: ' + (output === 'flatbuffer' ? 'FlatBuffer, all instances' : 'JSON, one instance');
+    targetDirty = true;
+};
 document.getElementById('saveTarget').onclick = function() {
     var port = Number(document.getElementById('port').value),
         button = this;
@@ -332,6 +354,7 @@ document.getElementById('saveTarget').onclick = function() {
         host: document.getElementById('host').value.trim(),
         port: port,
         receiver: receiver,
+        output: output,
         clearToken: document.getElementById('clearToken').checked
     };
     var token = document.getElementById('token').value.trim();
@@ -379,6 +402,8 @@ document.getElementById('saveProfile').onclick = function() {
             var parsed = JSON.parse(document.getElementById('customProfile').value);
             data.model = parsed.model;
             data.points = parsed.points;
+            data.geometry = parsed.geometry === 'rectangles' ? 'rectangles' : parsed.geometry === 'rim' ? 'rim' : geometry;
+            if (parsed.rectangles && parsed.rectangles.length) data.rectangles = parsed.rectangles;
         } catch (e) {
             showActionError('Custom profile must be valid JSON.');
             return;
@@ -400,6 +425,22 @@ document.getElementById('editProfile').onclick = function() {
     showProfile();
     if (advancedProfile) document.getElementById('customProfileField').focus();
 };
-setupRemoteNavigation(['overviewTab', 'receiverTab', 'calibrationTab', 'reloadService', 'grantRoot', 'start', 'stop', 'refresh', 'autostart', 'handover', 'calibrationShortcut', 'receiver', 'hostField', 'portField', 'piccapPortField', 'captureIntervalField', 'tokenField', 'clearToken', 'saveTarget', 'testConnection', 'calibrate', 'validateCalibration', 'profile', 'saveProfile', 'editProfile', 'customProfileField', 'cancelCalibration'].map(function(id) {
+document.getElementById('geometry').onclick = function() {
+    geometry = geometry === 'rim' ? 'rectangles' : 'rim';
+    profileDirty = true;
+    var field = document.getElementById('customProfile'),
+        stored = null;
+    try {
+        stored = JSON.parse(field.value);
+    } catch (e) {
+        stored = null;
+    }
+    if (stored && typeof stored === 'object') {
+        stored.geometry = geometry;
+        field.value = JSON.stringify(stored, null, 2);
+    }
+    showProfile();
+};
+setupRemoteNavigation(['overviewTab', 'receiverTab', 'calibrationTab', 'reloadService', 'grantRoot', 'start', 'stop', 'refresh', 'autostart', 'handover', 'calibrationShortcut', 'receiver', 'output', 'hostField', 'portField', 'piccapPortField', 'captureIntervalField', 'tokenField', 'clearToken', 'saveTarget', 'testConnection', 'calibrate', 'validateCalibration', 'profile', 'saveProfile', 'editProfile', 'geometry', 'customProfileField', 'cancelCalibration'].map(function(id) {
     return document.getElementById(id);
 }), document, window);

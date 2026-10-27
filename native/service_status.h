@@ -1,7 +1,7 @@
 /* Read-only runtime status serialization. */
 static bool status(void *h, void *m, void *ctx) {
     (void)ctx;
-    char json[8192], safe[512], endpoint[80];
+    char json[12288], safe[512], endpoint[80];
     size_t n = 0;
     snprintf(endpoint, sizeof(endpoint), strchr(target.host, ':') ? "[%s]:%u" : "%s:%u",
              target.host, target.port);
@@ -24,6 +24,9 @@ static bool status(void *h, void *m, void *ctx) {
             report[k++] = c;
     }
     report[k] = 0;
+    unsigned spatial_rectangles = 0;
+    if (calibration_rectangles())
+        calibration_blocks(&spatial_rectangles);
     int used = snprintf(
         json, sizeof(json),
         "{\"receiverConnecting\":%s,\"calibrationProfile\":\"%s\",\"effectiveCalibration\":\"%s\","
@@ -34,11 +37,22 @@ static bool status(void *h, void *m, void *ctx) {
         used +=
             snprintf(json + used, sizeof(json) - used, "%s{\"position\":%.12g,\"region\":%u}",
                      i ? "," : "", calibration.points[i].position, calibration.points[i].region);
-    used += snprintf(json + used, sizeof(json) - used,
-                     "],\"layoutUpdates\":%u,\"lastLayoutCheckAgeMs\":%lld,\"layoutError\":\"%s\","
+    used += snprintf(json + used, sizeof(json) - used, "],\"customRectangles\":[");
+    for (unsigned i = 0; i < calibration.rect_count && used + 96 < (int)sizeof(json); i++)
+        used += snprintf(json + used, sizeof(json) - used,
+                         "%s{\"region\":%u,\"x0\":%.6g,\"y0\":%.6g,\"x1\":%.6g,\"y1\":%.6g}",
+                         i ? "," : "", calibration.rects[i].region, calibration.rects[i].x0,
+                         calibration.rects[i].y0, calibration.rects[i].x1, calibration.rects[i].y1);
+    used += snprintf(json + used, sizeof(json) - used, "],\"customRectangleCount\":%u,\"spatialRectangleCount\":%u,"
+                                                             "\"customGeometry\":\"%s\","
+                     "\"spatialGeometry\":\"%s\",\"layoutUpdates\":%u,"
+                     "\"lastLayoutCheckAgeMs\":%lld,\"layoutError\":\"%s\","
                      "\"piccapFallbacks\":%u,\"piccapCooldownMs\":%llu,",
-                     layout_updates, last_layout_check ? (long long)(now - last_layout_check) : -1,
-                     layout_error, piccap_fallbacks,
+                     calibration.rect_count, spatial_rectangles,
+                     calibration.rect_geometry ? "rectangles" : "rim",
+                     calibration_rectangles() ? "rectangles" : "rim", layout_updates,
+                     last_layout_check ? (long long)(now - last_layout_check) : -1, layout_error,
+                     piccap_fallbacks,
                      (unsigned long long)(handover_cooldown > now ? handover_cooldown - now : 0));
     used += snprintf(json + used, sizeof(json) - used, "\"calibrationMessage\":\"%s\",", report);
     used += snprintf(json + used, sizeof(json) - used,
@@ -79,13 +93,17 @@ static bool status(void *h, void *m, void *ctx) {
         "\"version\":\"" HYPERDRM_VERSION
         "\",\"running\":%s,\"colorValid\":%s,\"frames\":%lu,\"captureRecoveries\":%u,"
         "\"lastRecoveryMs\":%llu,\"endpoint\":\"%s\",\"host\":\"%s\",\"port\":%u,"
-        "\"receiver\":\"%s\",\"tokenSet\":%s,\"piccapTargetCompatible\":%s,"
+        "\"receiver\":\"%s\",\"output\":\"%s\",\"flatbufferConnected\":%s,"
+        "\"tokenSet\":%s,\"piccapTargetCompatible\":%s,"
         "\"priority\":%d,\"uid\":%u,\"drmVerified\":false,\"mappingVerified\":false,"
         "\"outputColor\":[%u,%u,%u],\"error\":\"%s\",\"regions\":[",
         (capture_ctx.handle || capture_source == SOURCE_PICCAP) ? "true" : "false",
         capture_ctx.color_valid ? "true" : "false", capture_ctx.frames, capture_ctx.recoveries,
         (unsigned long long)capture_ctx.last_recovery_ms, endpoint, target.host, target.port,
-        target.receiver, target.token[0] ? "true" : "false",
+        target.receiver, target.output,
+        target_flatbuffer(&target) && receiver_runtime.flatbuffer.stage == FB_READY ? "true"
+                                                                                   : "false",
+        target.token[0] ? "true" : "false",
         target_piccap_compatible(&target) ? "true" : "false", PRIORITY, (unsigned)geteuid(),
         capture_ctx.sent_rgb[0], capture_ctx.sent_rgb[1], capture_ctx.sent_rgb[2], safe);
     for (int i = 0; i < 16; i++)

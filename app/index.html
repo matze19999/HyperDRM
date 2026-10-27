@@ -32,8 +32,8 @@ nav{border-bottom:1px solid #456185;padding-bottom:10px;margin-bottom:18px}nav b
 <p><small>Adjust brightness, saturation and normal smoothing in Hyperion or HyperHDR.</small></p><small id="diagnostics"></small>
 </section>
 <section id="receiverPanel" aria-label="Receiver settings" style="display:none">
-<fieldset><legend>Receiver connection</legend><button id="receiver">Receiver: Hyperion</button>
-<p><small>Select a field with the arrow buttons. Press OK or click to open the TV keyboard.</small></p>
+<fieldset><legend>Receiver connection</legend><button id="receiver">Receiver: Hyperion</button><button id="output">Output: JSON</button>
+<p><small>JSON addresses one HyperHDR LED hardware instance per connection. FlatBuffer sends one plane that HyperHDR fans out to every running instance, so extra instances light up too. It needs the receiver's FlatBuffer server.</small></p>
 <div class="fields">
 <div id="hostField" class="field" tabindex="0" role="button" aria-label="IP address, press OK to edit"><label>IP address<input id="host" tabindex="-1" readonly type="text" maxlength="45" value="127.0.0.1" spellcheck="false"></label></div>
 <div id="portField" class="field narrow" tabindex="0" role="button" aria-label="JSON port, press OK to edit"><label>JSON port<input id="port" tabindex="-1" readonly type="number" min="1" max="65535" value="19444"></label></div>
@@ -52,9 +52,10 @@ nav{border-bottom:1px solid #456185;padding-bottom:10px;margin-bottom:18px}nav b
 <div class="steps"><p><strong>1. Measure</strong>Play the built-in edge test. Keep the picture full-screen without bars.</p><p><strong>2. Save</strong>Review the result and save the measured profile.</p><p><strong>3. Check</strong>Validate all four colored screen corners against the LEDs.</p></div>
 <button id="calibrate" class="primary">Start Auto Calibration</button><button id="validateCalibration">Validate profile</button><p id="wizardStatus" role="status">Measurement takes about 70 seconds. Your saved profile is preserved until you select Save profile.</p>
 </fieldset>
-<fieldset><legend>Spatial profile</legend><button id="profile">Profile: Auto</button><button id="saveProfile" class="primary">Save profile</button><button id="editProfile" disabled>Edit profile JSON</button>
+<fieldset><legend>Spatial profile</legend><button id="profile">Profile: Auto</button><button id="saveProfile" class="primary">Save profile</button><button id="editProfile" disabled>Edit profile JSON</button><button id="geometry" disabled>Geometry: Perimeter</button>
 <p><small>Auto uses your measured model profile or the built-in LG G4 profile. Other uncalibrated TVs use average colors.</small></p>
-<div id="customEditor" style="display:none"><div id="customProfileField" class="field wide" tabindex="0" role="button" aria-label="Custom profile JSON, press OK to edit"><label>Custom model profile JSON<textarea id="customProfile" tabindex="-1" readonly rows="4" maxlength="2048" disabled spellcheck="false"></textarea></label></div></div>
+<p><small>Geometry controls how the 16 samples are drawn into the receiver's image. Perimeter blends along the screen rim. Region rectangles paint measured blocks and fall back to blocks derived from the measured rim positions. Compare both on your TV and keep the one that matches the LEDs.</small></p>
+<div id="customEditor" style="display:none"><div id="customProfileField" class="field wide" tabindex="0" role="button" aria-label="Custom profile JSON, press OK to edit"><label>Custom model profile JSON<textarea id="customProfile" tabindex="-1" readonly rows="4" maxlength="4096" disabled spellcheck="false"></textarea></label></div></div>
 </fieldset></section>
 <button id="cancelCalibration" disabled>Cancel calibration</button><video id="calibrationVideo" src="calibration.mp4" muted preload="auto" playsinline></video>
 <script src="version.js"></script><script src="remote.js"></script><script src="calibration.js"></script><script src="navigation.js"></script><script src="app.js"></script><script src="wizard.js"></script></html>
