@@ -17,7 +17,14 @@ Ambient Light for webOS, Hyperion and HyperHDR. An own webOS app and native ARM 
 
 ## Requirements and limits
 
-Tested on a rooted LG G4 with webOS 24, Homebrew Channel and Hyperion 2.0.16 and HyperHDR 22.0.0 tested on the TV. The native service requires root elevation and the TV's existing `libvtcapture`, Luna, GLib and JSON-C libraries. Other TV models or firmware versions have not been validated.
+Developer-tested on a rooted LG G4 with webOS 24, Homebrew Channel and Hyperion 2.0.16 and HyperHDR 22.0.0 tested on the TV. The native service requires root elevation and the TV's existing `libvtcapture`, Luna, GLib and JSON-C libraries. Other TV models or firmware versions have not been validated by the developer.
+
+| TV model | webOS | Firmware | Test source | Result |
+| --- | --- | --- | --- | --- |
+| LG G4 (rooted) | 24 | Not documented | Developer testing | Tested as described in this README |
+| LG OLED55C3LA | 26 | 43.21.71 | Community test by [megtomek](https://github.com/megtomek), reported on 2026-11-11 in [issue #2](https://github.com/matze19999/HyperDRM/issues/2) | User reports that HyperDRM works as expected, with no issues encountered |
+
+The LG OLED55C3LA entry is based on a single community report, not developer validation. The report does not specify the HyperDRM version, receiver setup, tested apps or individual features; it does not establish validation of DRM playback, spatial calibration, Auto PicCap or autostart on this TV. It is not a full compatibility guarantee and does not establish support for other LG models or firmware versions.
 
 DRM playback color output was confirmed on the test TV. Support depends on LG's capture implementation; this does not guarantee support on other devices or apps. HyperDRM transmits colors, not captured video frames. The video preview does not show the TV picture. HyperHDR may show a generated histogram color plane instead.
 
@@ -140,7 +147,7 @@ While a capture session runs, a separate nonblocking authenticated JSON connecti
 
 Select Auto, LG G4 (measured), Average (uniform), or Custom model in TV calibration and select Save profile. The app obtains the model identifier through LG's system-property service. Auto selects an imported profile matching that exact identifier, then the built-in G4 series profile, otherwise uniform average colors. Unknown models are not assigned an invented spatial calibration. A manual G4 selection is available when model detection is unavailable.
 
-Custom imports accept measured model JSON with 2-16 sorted clockwise perimeter points and histogram region indices 0-15. Profiles persist privately in the own service container and apply to the current session without restarting capture. See [profile format and calibration guidance](profiles/README.md). Only G4 hardware has been validated; importing a profile does not guarantee histogram support on another TV. Color calibration remains in Hyperion/HyperHDR.
+Custom imports accept measured model JSON with 2-16 sorted clockwise perimeter points and histogram region indices 0-15. Profiles persist privately in the own service container and apply to the current session without restarting capture. See [profile format and calibration guidance](profiles/README.md). Only G4 hardware has been validated by the developer; the LG OLED55C3LA community report above does not validate a spatial profile. Importing a profile does not guarantee histogram support on another TV. Color calibration remains in Hyperion/HyperHDR.
 
 ## Color continuity and guided calibration
 
