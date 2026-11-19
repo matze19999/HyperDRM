@@ -17,14 +17,23 @@ Ambient Light for webOS, Hyperion and HyperHDR. An own webOS app and native ARM 
 
 ## Requirements and limits
 
-Developer-tested on a rooted LG G4 with webOS 24, Homebrew Channel and Hyperion 2.0.16 and HyperHDR 22.0.0 tested on the TV. The native service requires root elevation and the TV's existing `libvtcapture`, Luna, GLib and JSON-C libraries. Other TV models or firmware versions have not been validated by the developer.
+HyperDRM was developer-tested on a rooted LG G4 with webOS 24 and Homebrew Channel. Hyperion 2.0.16 and HyperHDR 22.0.0 were tested on that TV. The native service requires root elevation and the TV's Luna, GLib and JSON-C libraries.
 
-| TV model | webOS | Firmware | Test source | Result |
+Capture requires a working LG histogram API in `libvtcapture.so.1`. The service loads `vtCapture_initHistogram`, `vtCapture_setPresetHistogram`, `vtCapture_getHistogram` and `vtCapture_finalizeHistogram` from that library. A firmware build can include the library and still lack these functions.
+
+The bundled ARM service in HyperDRM 0.13.4 requires the `GLIBC_2.34` symbol version. If the TV's glibc does not provide it, the dynamic loader stops the service before it can check the capture libraries. This requirement applies to the shipped executable. Building against a compatible glibc can address the loader error. Capture still requires LG's histogram API.
+
+| TV model | webOS / SDK | Firmware | Test source | Result |
 | --- | --- | --- | --- | --- |
 | LG G4 (rooted) | 24 | Not documented | Developer testing | Tested as described in this README |
 | LG OLED55C3LA | 26 | 43.21.71 | Community test by [megtomek](https://github.com/megtomek), reported on 2026-11-11 in [issue #2](https://github.com/matze19999/HyperDRM/issues/2) | User reports that HyperDRM works as expected, with no issues encountered |
+| LG OLED65C11LB (C1) | SDK 6.5.3 | 03.53.45 | Community test by [Stopjak](https://github.com/Stopjak), reported on 2026-11-19 in [issue #3](https://github.com/matze19999/HyperDRM/issues/3) | Confirmed incompatible on this firmware. The bundled service failed to start and the required histogram API was unavailable. |
 
 The LG OLED55C3LA entry is based on a single community report, not developer validation. The report does not specify the HyperDRM version, receiver setup, tested apps or individual features; it does not establish validation of DRM playback, spatial calibration, Auto PicCap or autostart on this TV. It is not a full compatibility guarantee and does not establish support for other LG models or firmware versions.
+
+On the reported OLED65C11LB, the loader reported `GLIBC_2.34` missing. Separate checks with `nm -D` and `strings` found no histogram entries in `/usr/lib/libvtcapture.so.1`. The reporter confirmed that the required histogram functionality was unavailable. A rebuild for that TV's glibc would leave the capture requirement unmet.
+
+Model and firmware combinations with no reported test are untested. If a report covers only part of the setup or feature set, compatibility outside that scope remains unknown. A webOS or SDK version alone cannot establish compatibility.
 
 DRM playback color output was confirmed on the test TV. Support depends on LG's capture implementation; this does not guarantee support on other devices or apps. HyperDRM transmits colors, not captured video frames. The video preview does not show the TV picture. HyperHDR may show a generated histogram color plane instead.
 
