@@ -4,8 +4,8 @@ from pathlib import Path
 from sync_version import synchronize
 synchronize(check=True)
 ROOT=Path(__file__).resolve().parent
-BASE='https://gitea.adnau.de/matze19999/HyperDRM'
-RAW=BASE+'/raw/branch/main/'
+BASE='https://github.com/matze19999/HyperDRM'
+RAW=BASE+'/raw/refs/heads/main/'
 app=json.loads((ROOT/'app/appinfo.json').read_text(encoding='utf-8'))
 ipk=ROOT/('HyperDRM_'+app['version']+'_arm.ipk')
 data=ipk.read_bytes()

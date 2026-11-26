@@ -1,7 +1,7 @@
 #include "mqtt_config.h"
 
 static uint64_t mqtt_status_at;
-static char mqtt_last_state[4096];
+static char mqtt_last_state[8192];
 static void mqtt_on_ready(void);
 static void mqtt_on_command(const char *topic, const char *value);
 #include "mqtt_transport.h"
@@ -103,10 +103,12 @@ static const struct MqttEntity {
     {"switch", "piccapHandover", "Automatic PicCap handover", MQTT_SWITCH, true},
     {"select", "sourceMode", "Source mode", "\"options\":[\"Auto\",\"HyperDRM\",\"PicCap\"]", true},
     {"select", "receiver", "Receiver type", "\"options\":[\"Hyperion\",\"HyperHDR\"]", true},
+    {"select", "output", "Output transport", "\"options\":[\"json\",\"flatbuffer\"]", true},
     {"text", "host", "Receiver IP address", "\"min\":1,\"max\":45", true},
     {"number", "port", "Receiver JSON port", "\"min\":1,\"max\":65535,\"step\":1,\"mode\":\"box\"", true},
     {"number", "piccapPort", "PicCap FlatBuffer port", "\"min\":1,\"max\":65535,\"step\":1,\"mode\":\"box\"", true},
     {"number", "captureIntervalMs", "Capture interval", "\"min\":25,\"max\":1000,\"step\":25,\"mode\":\"box\",\"unit_of_measurement\":\"ms\"", true},
+    {"select", "geometry", "Calibration geometry", "\"options\":[\"rim\",\"rectangles\"]", true},
     {"select", "profile", "Calibration profile", "\"options\":[\"auto\",\"g4\",\"average\",\"custom\"]", true},
     {"button", "test", "Test receiver connection", "\"payload_press\":\"PRESS\"", true},
     {"button", "clearToken", "Clear receiver API token", "\"payload_press\":\"PRESS\"", true}
@@ -114,11 +116,11 @@ static const struct MqttEntity {
 #undef MQTT_SWITCH
 
 static bool mqtt_publish_state(uint64_t now) {
-    char json[4096], error[515], user[259];
+    char json[8192], error[515], user[259];
     mqtt_quote(last_error[0] ? last_error : piccap_error[0] ? piccap_error : "None", error);
     mqtt_quote(mqtt_config.user, user);
     bool sending = capture_ctx.handle && capture_ctx.frames && capture_ctx.last_output_at &&
-                   receiver_runtime.output.stage == OUTPUT_READY &&
+                   receiver_ready() &&
                    now >= capture_ctx.last_output_at && now - capture_ctx.last_output_at < 1500;
     const char *source = piccap_owned && capture_source == SOURCE_PICCAP && piccap_connected
                              ? "PicCap" : sending ? "HyperDRM" : "None";
@@ -127,10 +129,10 @@ static bool mqtt_publish_state(uint64_t now) {
                      "\"error\":%s,\"connectionTest\":\"%s\",\"letterbox\":\"%s\","
                      "\"running\":\"%s\",\"autostart\":\"%s\",\"piccapHandover\":\"%s\","
                      "\"receiver\":\"%s\",\"host\":\"%s\",\"port\":%u,\"piccapPort\":%u,"
-                     "\"captureIntervalMs\":%u,\"profile\":\"%s\",\"effectiveProfile\":\"%s\","
+                     "\"captureIntervalMs\":%u,\"output\":\"%s\",\"profile\":\"%s\",\"effectiveProfile\":\"%s\",\"geometry\":\"%s\","
                      "\"piccapInstalled\":%s,\"piccapConnected\":%s,\"tokenSet\":%s,\"mqtt\":{"
                      "\"enabled\":true,\"host\":\"%s\",\"port\":%u,\"username\":%s,\"passwordSet\":%s},"
-                     "\"customProfile\":{\"model\":\"%s\",\"points\":[",
+                     "\"customProfile\":{\"model\":\"%s\",\"geometry\":\"%s\",\"points\":[",
                      source, source_modes[requested_source],
                      receiver_runtime.starting || capture_source == SOURCE_PICCAP_STARTING ? "Connecting" :
                      sending || !strcmp(source, "PicCap") ? "Connected" : retries.due ? "Retrying" : "Idle",
@@ -138,15 +140,25 @@ static bool mqtt_publish_state(uint64_t now) {
                      !retries.paused && (capture_ctx.handle || receiver_runtime.starting || piccap_owned || retries.due) ? "ON" : "OFF",
                      boot_enabled() ? "ON" : "OFF", handover_enabled ? "ON" : "OFF",
                      target.receiver, target.host, target.port, target.piccap_port, target_capture_interval(&target),
+                     target_flatbuffer(&target) ? "flatbuffer" : "json",
                      calibration_key(calibration.kind), calibration_key(calibration_effective()),
+                     calibration.rect_geometry ? "rectangles" : "rim",
                      piccap_installed() ? "true" : "false", piccap_connected ? "true" : "false",
                      target.token[0] ? "true" : "false", mqtt_config.host, mqtt_config.port, user,
-                     mqtt_config.password[0] ? "true" : "false", calibration.model);
+                     mqtt_config.password[0] ? "true" : "false", calibration.model,
+                     calibration.rect_geometry ? "rectangles" : "rim");
     if (n < 0 || (size_t)n >= sizeof(json) - 512)
         return false;
     for (unsigned i = 0; i < calibration.count; i++)
         n += snprintf(json + n, sizeof(json) - (size_t)n, "%s{\"position\":%.12g,\"region\":%u}",
                       i ? "," : "", calibration.points[i].position, calibration.points[i].region);
+    n += snprintf(json + n, sizeof(json) - (size_t)n, "],\"rectangles\":[");
+    for (unsigned i = 0; i < calibration.rect_count; i++) {
+        const RegionRect *r = &calibration.rects[i];
+        n += snprintf(json + n, sizeof(json) - (size_t)n,
+                      "%s{\"region\":%u,\"x0\":%.12g,\"y0\":%.12g,\"x1\":%.12g,\"y1\":%.12g}",
+                      i ? "," : "", r->region, r->x0, r->y0, r->x1, r->y1);
+    }
     snprintf(json + n, sizeof(json) - (size_t)n, "]}}");
     if (!strcmp(mqtt_last_state, json))
         return true;
@@ -204,7 +216,11 @@ static void mqtt_target_command(const char *key, const char *value) {
     mqtt_quote(target.receiver, type);
     if (!strcmp(key, "clearToken"))
         strcpy(extra, ",\"clearToken\":true");
-    else if (!strcmp(key, "token"))
+    else if (!strcmp(key, "output")) {
+        if (strcmp(value,"json") && (strcmp(value,"flatbuffer") || strcmp(target.receiver,"HyperHDR")))
+            return;
+        snprintf(extra, sizeof(extra), ",\"output\":%s", quoted);
+    } else if (!strcmp(key, "token"))
         snprintf(extra, sizeof(extra), ",\"token\":%s", quoted);
     else if (number && strcmp(key, "port"))
         snprintf(extra, sizeof(extra), ",\"%.17s\":%.5s", key, digits);
@@ -251,12 +267,17 @@ static void mqtt_on_command(const char *topic, const char *value) {
         char body[64];
         snprintf(body, sizeof(body), "{\"profile\":\"%.7s\"}", value);
         set_calibration_request(NULL, NULL, body);
+    } else if (!strcmp(key, "geometry") && (!strcmp(value, "rim") || !strcmp(value, "rectangles"))) {
+        char body[72];
+        snprintf(body, sizeof(body), "{\"profile\":\"%s\",\"geometry\":\"%.10s\"}",
+                 calibration_key(calibration.kind), value);
+        set_calibration_request(NULL, NULL, body);
     } else if (!strcmp(key, "test") && !strcmp(value, "PRESS")) {
         if (test_begin(&target, milliseconds()))
             strcpy(result, "{\"returnValue\":true}");
     } else if (!strcmp(key, "host") || !strcmp(key, "receiver") || !strcmp(key, "port") ||
                !strcmp(key, "piccapPort") || !strcmp(key, "captureIntervalMs") ||
-               !strcmp(key, "token") || !strcmp(key, "clearToken")) {
+               !strcmp(key, "token") || !strcmp(key, "clearToken") || !strcmp(key, "output")) {
         mqtt_target_command(key, value);
     }
     command_reply = NULL;

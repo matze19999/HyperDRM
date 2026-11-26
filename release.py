@@ -78,13 +78,13 @@ def main():
         linux('gcc', '-Wall', '-Wextra', '-Werror', '-O2', str(test.relative_to(ROOT)).replace('\\', '/'), '-ldl', '-lm', '-o', name)
         linux(name)
     if options.sanitizers:
-        for name in ('json_protocol', 'atomic_file', 'receiver_output', 'service_lifecycle', 'mqtt'):
+        for name in ('json_protocol', 'atomic_file', 'receiver_output', 'service_lifecycle', 'mqtt', 'flatbuffer', 'flatbuffer_output', 'rectangles'):
             destination = '/tmp/hyperdrm-sanitized-' + name
             linux('gcc', '-Wall', '-Wextra', '-Werror', '-O1', '-g', '-fsanitize=address,undefined',
                   'native/test_' + name + '.c', '-ldl', '-lm', '-o', destination)
             linux(destination)
     linux('arm-linux-gnueabi-gcc', '-Wall', '-Wextra', '-Werror', '-O2', '-rdynamic',
-          'native/service.c', '-ldl', '-o', 'service/histogram-service')
+          'native/service.c', '-ldl', '-lm', '-o', 'service/histogram-service')
     run(sys.executable, 'build_package.py')
     run(sys.executable, 'build_manifest.py')
     verify_package(version)

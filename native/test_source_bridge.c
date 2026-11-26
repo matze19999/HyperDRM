@@ -20,6 +20,7 @@ static bool piccap_connected;
 static char *queued;
 static bool stream_queue(const char *line){if(queued)return false;queued=strdup(line);return queued!=NULL;}
 static char *spatial_image_command_duration(const unsigned char colors[16][3],unsigned priority,unsigned duration){(void)colors;(void)priority;(void)duration;return strdup("image");}
+static bool calibration_rectangles(void){return false;}
 #include "source_bridge.h"
 static void consume(void){free(queued);queued=NULL;}
 int main(void){
