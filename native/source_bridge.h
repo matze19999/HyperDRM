@@ -23,7 +23,10 @@ static char *region_command(const unsigned char colors[16][3], const LedBlend *m
     for (unsigned i = 0; i < count; i++) {
         unsigned char value[3];
         LedBlend b = mapping[i];
-        blend_color(colors[b.a], colors[b.b], b.weight, value);
+        if (calibration_rectangles())
+            blend_color_linear(colors[b.a], colors[b.b], b.weight, value);
+        else
+            blend_color(colors[b.a], colors[b.b], b.weight, value);
         n += (size_t)snprintf(line + n, capacity - n, "%s%u,%u,%u", i ? "," : "", value[0],
                               value[1], value[2]);
     }

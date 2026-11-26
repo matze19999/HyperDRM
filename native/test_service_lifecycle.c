@@ -1,4 +1,5 @@
 #define DEV_MODE "/tmp/hyperdrm-lifecycle-marker"
+#define TARGET_PREF "/tmp/hyperdrm-lifecycle-target.json"
 #define main service_entry_point
 #include "service.c"
 #undef main
@@ -75,6 +76,54 @@ static void success(int fd, unsigned id, bool layout) {
                             : "{\"success\":true,\"tan\":%u}\n",
                      id);
     assert(send(fd, data, n, MSG_NOSIGNAL) == n);
+}
+static void test_restart_after_flatbuffer_clear(void) {
+    int peer[2];
+    assert(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, peer) == 0);
+    int server = socket(AF_INET, SOCK_STREAM, 0);
+    assert(server >= 0);
+    struct sockaddr_in address = {.sin_family = AF_INET, .sin_addr = {htonl(INADDR_LOOPBACK)}};
+    assert(!bind(server, (void *)&address, sizeof(address)) && !listen(server, 1));
+    socklen_t size = sizeof(address);
+    assert(!getsockname(server, (void *)&address, &size));
+
+    retry_reset(&retries);
+    strcpy(target.receiver, "HyperHDR");
+    strcpy(target.output, "flatbuffer");
+    FlatbufferOutput *old = &receiver_runtime.flatbuffer;
+    old->fd = peer[0];
+    old->stage = FB_READY;
+    old->priority = PRIORITY;
+    old->scratch_capacity = 128;
+    old->scratch = malloc(old->scratch_capacity);
+    old->replies = malloc(FB_REPLY_LIMIT);
+    assert(old->scratch && old->replies);
+    capture_ctx.handle = &fake_handle;
+
+    char change[160];
+    snprintf(change, sizeof(change),
+             "{\"host\":\"127.0.0.1\",\"port\":%u,\"receiver\":\"Hyperion\",\"output\":\"json\"}",
+             ntohs(address.sin_port));
+    assert(settings_request((void *)1, "{}", change));
+    assert(strstr(answer, "\"returnValue\":true") && !capture_ctx.handle && receiver_closing());
+    assert(!target_flatbuffer(&target) && retries.due);
+    tick(NULL);
+    assert(!receiver_runtime.starting && old->closing && old->awaiting);
+    unsigned char request[128];
+    assert(recv(peer[1], request, sizeof(request), 0) > 4);
+
+    const unsigned char ack[] = {0,0,0,12, 8,0,0,0, 4,0,4,0, 4,0,0,0};
+    assert(send(peer[1], ack, sizeof(ack), MSG_NOSIGNAL) == sizeof(ack));
+    tick(NULL);
+    assert(old->stage == FB_IDLE && !receiver_closing() && receiver_runtime.starting);
+    int connection = accept(server, NULL, NULL);
+    assert(connection >= 0);
+    close(connection);
+    receiver_close();
+    fb_out_release(old);
+    close(peer[1]);
+    close(server);
+    assert(unlink(TARGET_PREF) == 0);
 }
 int main(void) {
     assert(access(DEV_MODE, F_OK) != 0);
@@ -156,6 +205,7 @@ int main(void) {
     assert(WIFEXITED(result) && !WEXITSTATUS(result));
     assert(access(DEV_MODE, F_OK) != 0);
     close(server);
+    test_restart_after_flatbuffer_clear();
     dlclose(playback_json.lib);
     puts("PASS: service Start/Stop during connect, delayed receiver ACK leaves Status/Stop "
          "responsive, fake capture lifecycle, asynchronous clear and no restart after Stop");
