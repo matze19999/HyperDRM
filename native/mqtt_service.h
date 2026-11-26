@@ -36,6 +36,14 @@ static bool mqtt_settings(void *h, void *m, void *ctx) {
 
 static bool mqtt_status(void *h, void *m, void *ctx) {
     (void)ctx;
+    if (geteuid() != 0) {
+        struct stat saved;
+        bool known_setup = lstat(MQTT_PREF, &saved) == 0 && S_ISREG(saved.st_mode) &&
+                           saved.st_uid == 0 && (saved.st_mode & 0777) == 0600;
+        return respond(h, m, known_setup
+                                 ? "{\"returnValue\":true,\"rootRequired\":true,\"restoreAllowed\":true}"
+                                 : "{\"returnValue\":true,\"rootRequired\":true}");
+    }
     char user[259], body[800];
     mqtt_quote(mqtt_config.user, user);
     snprintf(body, sizeof(body),

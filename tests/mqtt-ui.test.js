@@ -6,19 +6,22 @@ const vm = require('vm');
 
 const elements = new Map();
 const callbacks = [];
-let refresh;
+let refresh, restoreFinished, restores = 0;
 const pending = ['overview status request'];
 const context = {
     document: {
         getElementById(id) {
             if (!elements.has(id)) {
-                elements.set(id, {setAttribute() {}, addEventListener() {}});
+                elements.set(id, {style: {}, setAttribute() {}, addEventListener() {}});
             }
             return elements.get(id);
         }
     },
     window: {},
     pending,
+    versionCompatible: true,
+    repairRoot(done) { restores++; restoreFinished = done; },
+    clearActionError() {},
     setupFormEditors() {},
     call(method, callback) {
         assert.strictEqual(method, 'mqttStatus');
@@ -42,4 +45,27 @@ refresh();
 assert.strictEqual(callbacks.length, 1);
 callbacks.shift()({...status, connected: true, topic: 'hyperdrm/hdr-test'});
 assert.strictEqual(elements.get('mqttStatus').textContent, 'MQTT: Connected: hyperdrm/hdr-test');
-console.log('PASS: MQTT status updates while Overview status is pending');
+refresh();
+callbacks.shift()({returnValue: true, rootRequired: true});
+assert.strictEqual(restores, 0, 'A fresh setup must not request elevation automatically');
+assert.strictEqual(elements.get('mqttSave').disabled, true);
+assert.match(elements.get('mqttStatus').textContent, /needs root access/);
+
+refresh();
+const priorSetup = {returnValue: true, rootRequired: true, restoreAllowed: true};
+callbacks.shift()(priorSetup);
+assert.strictEqual(restores, 1);
+restoreFinished(false);
+refresh();
+callbacks.shift()(priorSetup);
+assert.strictEqual(restores, 1, 'Denied automatic elevation must not be retried in a loop');
+
+elements.get('mqttRestoreRoot').onclick();
+assert.strictEqual(restores, 2);
+restoreFinished(true);
+callbacks.shift()({...status, connected: true, topic: 'hyperdrm/hdr-test'});
+assert.strictEqual(elements.get('mqttRestoreRoot').style.display, 'none');
+assert.strictEqual(elements.get('mqttSave').disabled, false);
+assert.strictEqual(elements.get('mqttStatus').textContent, 'MQTT: Connected: hyperdrm/hdr-test');
+
+console.log('PASS: MQTT polling, prior-setup recovery, no retry loop and manual recovery');

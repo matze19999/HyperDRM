@@ -8,10 +8,12 @@
     var toggle = document.getElementById('mqttEnabled');
     var save = document.getElementById('mqttSave');
     var source = document.getElementById('sourceMode');
+    var restoreRoot = document.getElementById('mqttRestoreRoot');
     var status = document.getElementById('mqttStatus');
     var modes = ['Auto', 'HyperDRM', 'PicCap'];
     var dirty = false, enabled = false, mode = 'Auto', busy = false, piccapAvailable = false;
     var refreshing = false, settingsRevision = 0;
+    var needsRoot = false, triedAutomaticRestore = false;
 
     setupFormEditors(['mqttHost', 'mqttPort', 'mqttUser', 'mqttPassword'], document, window);
     [host, port, username, password, clear].forEach(function(field) {
@@ -34,6 +36,19 @@
                 return;
             }
             if (!result.returnValue) return;
+            needsRoot = result.rootRequired === true;
+            restoreRoot.style.display = needsRoot ? 'inline-block' : 'none';
+            [toggle, host, port, username, password, clear, save].forEach(function(control) {
+                control.disabled = needsRoot;
+            });
+            if (needsRoot) {
+                status.textContent = 'MQTT needs root access to read saved settings. Select Restore Root Access.';
+                if (result.restoreAllowed && versionCompatible && !triedAutomaticRestore) {
+                    triedAutomaticRestore = true;
+                    restoreAccess();
+                }
+                return;
+            }
             mode = result.sourceMode;
             piccapAvailable = result.piccapAvailable;
             source.textContent = 'Source mode: ' + mode;
@@ -56,6 +71,7 @@
         showEnabled();
     };
     save.onclick = function() {
+        if (needsRoot) return;
         var number = Number(port.value);
         if (!Number.isInteger(number) || number < 1 || number > 65535) {
             showActionError('Broker port must be an integer from 1 to 65535.');
@@ -74,6 +90,22 @@
             refresh();
         }, body);
     };
+    function restoreAccess() {
+        if (busy || !needsRoot) return;
+        settingsRevision++;
+        busy = restoreRoot.disabled = true;
+        status.textContent = 'Restoring MQTT root access...';
+        repairRoot(function(ok) {
+            busy = restoreRoot.disabled = false;
+            if (ok) {
+                clearActionError();
+                refresh();
+            } else {
+                status.textContent = 'MQTT needs root access. Select Restore Root Access to retry.';
+            }
+        });
+    }
+    restoreRoot.onclick = restoreAccess;
     source.onclick = function() {
         var next = modes[(modes.indexOf(mode) + 1) % modes.length];
         if (next === 'PicCap' && !piccapAvailable) next = 'Auto';

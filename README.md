@@ -46,7 +46,7 @@ Only the own service is modified. Optional Auto PicCap can configure its receive
 
 To browse and install HyperDRM from **Homebrew Channel**, open **Settings → Add repository** and enter the [raw repository URL](https://raw.githubusercontent.com/matze19999/HyperDRM/main/repo.json). Then return to the catalog and select **HyperDRM**. The TV needs root access and a compatible LG histogram implementation.
 
-The current package is [HyperDRM_0.15.4_arm.ipk](HyperDRM_0.15.4_arm.ipk). Install it using the TV's webOS/Homebrew package installation workflow.
+The current package is [HyperDRM_0.15.5_arm.ipk](HyperDRM_0.15.5_arm.ipk). Install it using the TV's webOS/Homebrew package installation workflow.
 
 Elevate the installed own service through Homebrew Channel:
 
@@ -302,7 +302,7 @@ Histogram capture defaults to 50 ms. The Receiver panel provides a saved Capture
 Open **Receiver → Home Assistant MQTT**, enter the broker IP and TCP port (default
 1883), optionally enter a username and password, enable MQTT and save. The
 Home Assistant MQTT integration must use the same broker and have discovery
-enabled with its default `homeassistant` prefix. MQTT is optional and disabled
+enabled with its default `homeassistant` prefix. If an update resets service permissions, HyperDRM tries to restore previously configured MQTT when the app opens or during TV boot with the existing MQTT boot hook. If Homebrew Channel refuses the request, use **Restore Root Access** in the MQTT panel to retry. MQTT is optional and disabled
 until configured. It reconnects automatically and starts at TV boot independently
 of the ambient-lighting autostart setting.
 

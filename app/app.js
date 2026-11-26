@@ -450,6 +450,6 @@ document.getElementById('geometry').onclick = function() {
     }
     showProfile();
 };
-setupRemoteNavigation(['overviewTab', 'receiverTab', 'calibrationTab', 'reloadService', 'grantRoot', 'start', 'stop', 'refresh', 'autostart', 'handover', 'sourceMode', 'calibrationShortcut', 'receiver', 'output', 'hostField', 'portField', 'piccapPortField', 'captureIntervalField', 'tokenField', 'clearToken', 'saveTarget', 'testConnection', 'mqttEnabled', 'mqttHostField', 'mqttPortField', 'mqttUserField', 'mqttPasswordField', 'mqttClearPassword', 'mqttSave', 'calibrate', 'validateCalibration', 'profile', 'saveProfile', 'editProfile', 'geometry', 'customProfileField', 'cancelCalibration'].map(function(id) {
+setupRemoteNavigation(['overviewTab', 'receiverTab', 'calibrationTab', 'reloadService', 'grantRoot', 'start', 'stop', 'refresh', 'autostart', 'handover', 'sourceMode', 'calibrationShortcut', 'receiver', 'output', 'hostField', 'portField', 'piccapPortField', 'captureIntervalField', 'tokenField', 'clearToken', 'saveTarget', 'testConnection', 'mqttEnabled', 'mqttHostField', 'mqttPortField', 'mqttUserField', 'mqttPasswordField', 'mqttClearPassword', 'mqttSave', 'mqttRestoreRoot', 'calibrate', 'validateCalibration', 'profile', 'saveProfile', 'editProfile', 'geometry', 'customProfileField', 'cancelCalibration'].map(function(id) {
     return document.getElementById(id);
 }).filter(Boolean), document, window);

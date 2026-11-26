@@ -237,7 +237,8 @@ int main(void) {
     cancel_call = symbol(ls, "LSCallCancel");
     if (playback_json_init(&playback_json)) {
         handover_load();
-        mqtt_config_load();
+        if (geteuid() == 0)
+            mqtt_config_load();
         target_load(&playback_json, TARGET_PREF, &target);
         calibration_load(&playback_json, CALIBRATION_PREF);
     }
