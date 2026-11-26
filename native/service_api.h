@@ -67,7 +67,8 @@ static bool initialize_capture(void *h, void *m) {
         set_error("LG histogram preset initialization failed");
         return start_failure(h, m, "Histogram preset failed");
     }
-    capture_ctx.preset = capture_ctx.letterbox_mode = capture_ctx.settling = 0;
+    capture_ctx.preset = capture_ctx.letterbox_mode = 0;
+    capture_ctx.capture_due = capture_ctx.settle_until = 0;
     capture_ctx.pending_letterbox = -1;
     capture_ctx.next_border_probe = 0;
     retries.due = 0;

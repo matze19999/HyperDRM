@@ -187,6 +187,48 @@ static void fb_out_drain_replies(FlatbufferOutput *o, uint64_t now) {
         o->replies_used -= size + 4;
     }
 }
+static bool fb_out_flush(FlatbufferOutput *o, uint64_t now, size_t *budget) {
+    if (o->stage == FB_READY && !o->queue && !o->awaiting && o->pending) {
+        free(o->queue);
+        o->queue = o->pending;
+        o->queue_length = o->pending_length;
+        o->queue_sent = 0;
+        o->queue_image = o->pending_image;
+        o->queue_timing = o->pending_timing;
+        o->pending = NULL;
+        o->pending_length = 0;
+        o->pending_image = false;
+        o->deadline = now + 3000;
+    }
+    if (o->queue) {
+        while (o->queue_sent < o->queue_length && *budget) {
+            size_t amount = o->queue_length - o->queue_sent;
+            if (amount > *budget)
+                amount = *budget;
+            ssize_t sent = send(o->fd, o->queue + o->queue_sent, amount, MSG_NOSIGNAL);
+            if (sent < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+                    break;
+                fb_out_fail(o, "FlatBuffer connection closed during send");
+                return false;
+            }
+            if (!sent) {
+                fb_out_fail(o, "FlatBuffer connection closed during send");
+                return false;
+            }
+            o->queue_sent += (size_t)sent;
+            *budget -= (size_t)sent;
+        }
+        if (o->queue_sent == o->queue_length) {
+            free(o->queue);
+            o->queue = NULL;
+            o->queue_length = o->queue_sent = 0;
+            o->awaiting = true;
+            o->queue_timing.sent = now;
+        }
+    }
+    return true;
+}
 static void fb_out_tick(FlatbufferOutput *o, uint64_t now) {
     if (o->stage == FB_IDLE || o->stage == FB_FAILED)
         return;
@@ -219,34 +261,9 @@ static void fb_out_tick(FlatbufferOutput *o, uint64_t now) {
         }
         o->stage = FB_REGISTERING;
     }
-    if (o->queue) {
-        size_t budget = 65536;
-        while (o->queue_sent < o->queue_length && budget) {
-            size_t amount = o->queue_length - o->queue_sent;
-            if (amount > budget)
-                amount = budget;
-            ssize_t sent = send(o->fd, o->queue + o->queue_sent, amount, MSG_NOSIGNAL);
-            if (sent < 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-                    break;
-                fb_out_fail(o, "FlatBuffer connection closed during send");
-                return;
-            }
-            if (!sent) {
-                fb_out_fail(o, "FlatBuffer connection closed during send");
-                return;
-            }
-            o->queue_sent += (size_t)sent;
-            budget -= (size_t)sent;
-        }
-        if (o->queue_sent == o->queue_length) {
-            free(o->queue);
-            o->queue = NULL;
-            o->queue_length = o->queue_sent = 0;
-            o->awaiting = true;
-            o->queue_timing.sent = now;
-        }
-    }
+    size_t budget = 65536;
+    if (!fb_out_flush(o, now, &budget))
+        return;
     size_t available = FB_REPLY_LIMIT - o->replies_used;
     if (available) {
         ssize_t got = recv(o->fd, o->replies + o->replies_used, available, 0);
@@ -265,18 +282,7 @@ static void fb_out_tick(FlatbufferOutput *o, uint64_t now) {
                 return;
         }
     }
-    if (o->stage == FB_READY && !o->queue && !o->awaiting && o->pending) {
-        free(o->queue);
-        o->queue = o->pending;
-        o->queue_length = o->pending_length;
-        o->queue_sent = 0;
-        o->queue_image = o->pending_image;
-        o->queue_timing = o->pending_timing;
-        o->pending = NULL;
-        o->pending_length = 0;
-        o->pending_image = false;
-        o->deadline = now + 3000;
-    }
+    fb_out_flush(o, now, &budget);
 }
 /* Drop the frame from every instance. A disconnect also clears the priority, so
  * `clear` only controls the explicit Clear request before closing. */

@@ -46,7 +46,7 @@ Only the own service is modified. Optional Auto PicCap can configure its receive
 
 To browse and install HyperDRM from **Homebrew Channel**, open **Settings → Add repository** and enter the [raw repository URL](https://raw.githubusercontent.com/matze19999/HyperDRM/main/repo.json). Then return to the catalog and select **HyperDRM**. The TV needs root access and a compatible LG histogram implementation.
 
-The current package is [HyperDRM_0.15.6_arm.ipk](HyperDRM_0.15.6_arm.ipk). Install it using the TV's webOS/Homebrew package installation workflow.
+The current package is [HyperDRM_0.15.7_arm.ipk](HyperDRM_0.15.7_arm.ipk). Install it using the TV's webOS/Homebrew package installation workflow.
 
 Elevate the installed own service through Homebrew Channel:
 
@@ -295,7 +295,7 @@ Rectangle geometry computes histogram means and spatial blends in linear light (
 
 Thin letterbox detection compares both edges against lit interior histogram samples and requires a consistently dark upper edge for at least two seconds. Histogram probes cannot determine the exact bar height or guarantee detection on every scene.
 
-Histogram capture defaults to 50 ms. The Receiver panel provides a saved Capture interval (ms) setting from 25 to 1000 in steps of 25. Existing settings without this field use 50 ms. PicCap capture timing is unchanged. Overview shows the measured histogram cadence and the latest fresh frame timing through the JSON or FlatBuffer receiver acknowledgment. The breakdown separates capture and rendering, queue and send, and waiting for confirmation. It includes service polling delays and does not measure TV display processing or physical LED latency.
+Histogram capture defaults to 50 ms. The Receiver panel provides a saved Capture interval (ms) setting from 25 to 1000 in steps of 25. Existing settings without this field use 50 ms. PicCap capture timing is unchanged. Overview shows the measured histogram cadence and the latest fresh frame timing through the JSON or FlatBuffer receiver acknowledgment. The breakdown separates capture and rendering, queue and send, and waiting for confirmation. It includes service polling delays and does not measure TV display processing or physical LED latency. Fresh frames are sent immediately when the connection is free. The service checks for receiver replies every 5 ms while streaming or connecting and uses a slower timer when inactive.
 
 ### Home Assistant over MQTT
 

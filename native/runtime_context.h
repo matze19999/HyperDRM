@@ -4,14 +4,15 @@
 #include "histogram.h"
 #include "continuity.h"
 #include "frame_timing.h"
+#define HISTOGRAM_SETTLE_MS 60
 typedef struct {
     void *handle;
     char diagnostic[256];
     unsigned long frames;
     unsigned char rgb[16][3], sent_rgb[3];
-    unsigned black_percent[16], preset, letterbox_mode, settling;
+    unsigned black_percent[16], preset, letterbox_mode;
     int pending_letterbox;
-    uint64_t candidate_since, next_border_probe, sample_at;
+    uint64_t candidate_since, next_border_probe, sample_at, capture_due, settle_until;
     unsigned sample_sequence, recoveries;
     uint64_t recovery_started, last_recovery_ms, last_output_at;
     bool color_valid;

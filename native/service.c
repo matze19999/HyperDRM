@@ -210,6 +210,36 @@ static bool respond(void *h, void *m, const char *s) {
 #include "mqtt_service.h"
 #include "dark_color.h"
 #include "capture_loop.h"
+/* Poll output quickly only while a capture connection is active. GLib waits
+ * for the timer or a Luna event instead of rounding deadlines to a sleep loop. */
+typedef struct {
+    unsigned (*add_timeout)(unsigned, int (*)(void *), void *);
+    unsigned period, id;
+} ServiceTimer;
+
+static int service_timer_tick(void *context) {
+    ServiceTimer *timer = context;
+    if (quitting) {
+        timer->id = 0;
+        return 0;
+    }
+    tick(NULL);
+    unsigned wanted =
+        capture_ctx.handle || receiver_runtime.starting ||
+                receiver_runtime.clear_pending || receiver_closing()
+            ? 5
+            : 25;
+    if (wanted != timer->period) {
+        unsigned id = timer->add_timeout(wanted, service_timer_tick, timer);
+        if (id) {
+            timer->period = wanted;
+            timer->id = id;
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static void *symbol(void *lib, const char *name) {
     void *s = dlsym(lib, name);
     if (!s) {
@@ -255,6 +285,7 @@ int main(void) {
     void *(*loop_new)(void *, int) = symbol(glib, "g_main_loop_new");
     int (*iterate)(void *, int) = symbol(glib, "g_main_context_iteration");
     unsigned (*timer)(unsigned, int (*)(void *), void *) = symbol(glib, "g_timeout_add");
+    int (*remove_source)(unsigned) = symbol(glib, "g_source_remove");
     void (*loop_unref)(void *) = symbol(glib, "g_main_loop_unref");
     void *handle = NULL, *loop = loop_new(NULL, 0);
     LSError e;
@@ -284,11 +315,12 @@ int main(void) {
     service_handle = handle;
     if (!boot_enabled())
         retry_pause(&retries);
-    timer(25, tick, NULL);
-    while (!quitting) {
-        iterate(NULL, 0);
-        usleep(10000);
-    }
+    ServiceTimer scheduler = {.add_timeout = timer, .period = 25};
+    scheduler.id = timer(scheduler.period, service_timer_tick, &scheduler);
+    while (!quitting && scheduler.id)
+        iterate(NULL, 1);
+    if (scheduler.id)
+        remove_source(scheduler.id);
     mqtt_close(milliseconds(), NULL);
     stream_close(milliseconds());
     test_close();

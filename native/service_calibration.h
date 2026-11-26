@@ -11,7 +11,7 @@ static bool calibration_session(void *h, void *m, void *ctx) {
                            "calibration capture\"}");
         }
         capture_ctx.preset = capture_ctx.letterbox_mode = 0;
-        capture_ctx.settling = 2;
+        capture_ctx.settle_until = milliseconds() + HISTOGRAM_SETTLE_MS;
         capture_ctx.pending_letterbox = -1;
     } else if (!strcmp(p, "{\"enabled\":false}"))
         calibration_ctx.until = 0;

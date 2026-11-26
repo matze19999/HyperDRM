@@ -28,19 +28,23 @@ static void frame_release(OutputFrame *frame) {
     frame->plane = NULL;
 }
 static bool frame_send(const OutputFrame *frame, unsigned duration, uint64_t sampled) {
+    size_t budget = 65536;
     if (target_flatbuffer(&target)) {
         FlatbufferOutput *output = &receiver_runtime.flatbuffer;
         if (!frame->plane || !fb_out_frame(output, frame->plane, SPATIAL_WIDTH,
                                            SPATIAL_HEIGHT, (int)duration, milliseconds()))
             return false;
-        output->pending_timing = (FrameTiming){.sampled = sampled, .queued = milliseconds()};
+        uint64_t queued = milliseconds();
+        output->pending_timing = (FrameTiming){.sampled = sampled, .queued = queued};
+        return fb_out_flush(output, queued, &budget);
     } else {
         ReceiverOutput *output = &receiver_runtime.output;
         if (!frame->line || !output_frame(output, frame->line))
             return false;
-        output->latest_timing = (FrameTiming){.sampled = sampled, .queued = milliseconds()};
+        uint64_t queued = milliseconds();
+        output->latest_timing = (FrameTiming){.sampled = sampled, .queued = queued};
+        return output_start_latest(output, queued) && output_flush(output, &budget, queued);
     }
-    return true;
 }
 static FrameTiming receiver_confirmed_timing(void) {
     return target_flatbuffer(&target) ? receiver_runtime.flatbuffer.confirmed_timing

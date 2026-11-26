@@ -2,7 +2,11 @@
 static int tick(void *unused) {
     (void)unused;
     uint64_t now = milliseconds();
-    mqtt_service_tick(now);
+    static uint64_t next_mqtt_poll;
+    if (now >= next_mqtt_poll) {
+        mqtt_service_tick(now);
+        next_mqtt_poll = now + 25;
+    }
     unsigned long acknowledged = receiver_frames();
     now = milliseconds();
     receiver_tick(&playback_json, now);
@@ -78,10 +82,8 @@ static int tick(void *unused) {
         retry_source_transition(&retries, milliseconds());
         return 1;
     }
-    if (capture_ctx.settling) {
-        capture_ctx.settling--;
+    if (now < capture_ctx.settle_until)
         return 1;
-    }
     if (!CALIBRATION_ACTIVE && capture_ctx.letterbox_mode && capture_ctx.preset == 1 &&
         milliseconds() >= capture_ctx.next_border_probe) {
         if (vt_preset(capture_ctx.handle, 0) != 0) {
@@ -90,13 +92,13 @@ static int tick(void *unused) {
             return 1;
         }
         capture_ctx.preset = 0;
-        capture_ctx.settling = 2;
+        capture_ctx.settle_until = milliseconds() + HISTOGRAM_SETTLE_MS;
         return 1;
     }
-    if (capture_ctx.sample_at && now - capture_ctx.sample_at < target_capture_interval(&target))
+    uint64_t sample_start = milliseconds();
+    if (!capture_slot(&capture_ctx.capture_due, sample_start, target_capture_interval(&target)))
         return 1;
     Histogram hist[16] = {0};
-    uint64_t sample_start = milliseconds();
     int rc = vt_get(capture_ctx.handle, hist);
     bool populated = !rc && histogram_populated(hist);
     if (!populated) {
@@ -121,7 +123,7 @@ static int tick(void *unused) {
         }
         return 1;
     }
-    capture_ctx.sample_at = now;
+    capture_ctx.sample_at = sample_start;
     sample_timing_record(&capture_ctx.sample_timing, sample_start);
     capture_ctx.sample_sequence++;
     unsigned aggregate[3] = {0};
@@ -164,7 +166,7 @@ static int tick(void *unused) {
                 return 1;
             }
             capture_ctx.preset = 1;
-            capture_ctx.settling = 2;
+            capture_ctx.settle_until = milliseconds() + HISTOGRAM_SETTLE_MS;
             capture_ctx.next_border_probe = now + 2000;
             return 1;
         }
