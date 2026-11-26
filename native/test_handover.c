@@ -79,5 +79,21 @@ int main(void){
  piccap_reply(NULL,"{\"returnValue\":false}",(void*)(intptr_t)3);assert(capture_source==SOURCE_PICCAP_STOPPING && piccap_error[0]);
  clock_ms+=600;handover_tick();confirm_stop();
  strcpy(target.host,"2001:db8::1");handover_cooldown=0;media(PLAYBACK_CLEAR);clock_ms+=2000;media(PLAYBACK_CLEAR);assert(!handover_tick());
+ strcpy(target.host,"127.0.0.1");target.piccap_port=19400;
+ handover_enabled=false;requested_source=MODE_PICCAP;retry_pause(&retries);
+ select_manual_source(requested_source,false,false,clock_ms);
+ assert(!retries.paused);
+ media(PLAYBACK_UNKNOWN);assert(handover_tick() && capture_source==SOURCE_PICCAP_STARTING);
+ piccap_reply(NULL,"{\"returnValue\":true,\"address\":\"127.0.0.1\",\"port\":19400,\"unix-socket\":false}",(void*)(intptr_t)3);
+ assert(strstr(last_uri,"/status"));
+ answer(5,true,true);
+ assert(capture_source==SOURCE_PICCAP && piccap_connected);
+ requested_source=MODE_HYPERDRM;
+ handover_tick();assert(capture_source==SOURCE_PICCAP_STOPPING);confirm_stop();
+ assert(retries.due==clock_ms);
+ retry_pause(&retries);
+ select_manual_source(requested_source,false,false,clock_ms);
+ assert(!retries.paused && !retries.due && handover_tick() && strstr(last_uri,"/stop"));
+ confirm_stop();assert(retries.due==clock_ms);
  puts("PASS: stable clear gate, bounded pause grace, immediate DRM fallback, disconnect/reconnect and cooldown, exclusive capture, custom targets and failures");return 0;
 }

@@ -14,6 +14,9 @@
     "handover.json"
 static PlaybackJson playback_json;
 static bool handover_enabled, piccap_owned, piccap_busy, media_busy, piccap_connected;
+enum { MODE_AUTO, MODE_HYPERDRM, MODE_PICCAP };
+static unsigned requested_source;
+static const char *const source_modes[] = {"Auto", "HyperDRM", "PicCap"};
 static PlaybackProtection protection;
 static uint64_t protection_at, next_media_probe, next_piccap_probe, handover_cooldown,
     piccap_action_at;
@@ -42,9 +45,14 @@ static bool piccap_request(int command);
 static inline bool piccap_installed(void) {
     return access(PICCAP_BINARY, X_OK) == 0;
 }
-static bool handover_save(bool enabled) {
-    const char *data = enabled ? "{\"piccapHandover\":true}\n" : "{\"piccapHandover\":false}\n";
+static bool source_save(bool enabled, unsigned mode) {
+    char data[128];
+    snprintf(data, sizeof(data), "{\"piccapHandover\":%s,\"sourceMode\":\"%s\"}\n",
+             enabled ? "true" : "false", source_modes[mode]);
     return atomic_replace(HANDOVER_PREF, data, strlen(data)) != SAVE_UNCHANGED;
+}
+static bool handover_save(bool enabled) {
+    return source_save(enabled, requested_source);
 }
 static void handover_load(void) {
     int fd = open(HANDOVER_PREF, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
@@ -57,6 +65,9 @@ static void handover_load(void) {
         text[n] = 0;
         void *root = playback_json.parse(text);
         handover_enabled = playback_true(&playback_json, root, "piccapHandover");
+        for (unsigned mode = MODE_AUTO; mode <= MODE_PICCAP; mode++)
+            if (playback_is(&playback_json, root, "sourceMode", source_modes[mode]))
+                requested_source = mode;
         if (root)
             playback_json.put(root);
     }
@@ -84,8 +95,8 @@ static bool media_reply(void *h, void *m, void *ctx) {
     }
     return true;
 }
-/* Commands: 0 status, 1 start, 2 stop, 3 getSettings, 4 setSettings. Confirm stopped status before
- * VT reuse. */
+/* Commands: 0 status, 1 start, 2 stop, 3 getSettings, 4 setSettings,
+ * 5 check whether an externally started PicCap can be adopted. */
 static bool piccap_reply(void *h, void *m, void *ctx) {
     (void)h;
     int command = (int)(intptr_t)ctx;
@@ -123,6 +134,21 @@ static bool piccap_reply(void *h, void *m, void *ctx) {
             capture_source = SOURCE_HISTOGRAM;
             piccap_connected = false;
         }
+    } else if (command == 5 && capture_source == SOURCE_PICCAP_STARTING) {
+        void *running = playback_field(&playback_json, root, "isRunning");
+        if (ok && running && playback_json.type(running) == 1) {
+            if (playback_json.boolean(running)) {
+                capture_source = SOURCE_PICCAP;
+                piccap_connected = playback_true(&playback_json, root, "connected");
+                piccap_disconnected_since = piccap_connected ? 0 : milliseconds();
+            } else if (!piccap_request(1)) {
+                capture_source = SOURCE_PICCAP_STOPPING;
+                snprintf(piccap_error, sizeof(piccap_error), "Cannot start PicCap");
+            }
+        } else {
+            capture_source = SOURCE_PICCAP_STOPPING;
+            snprintf(piccap_error, sizeof(piccap_error), "Cannot read PicCap status");
+        }
     } else if (command == 3 && capture_source == SOURCE_PICCAP_STARTING) {
         void *port = playback_field(&playback_json, root, "port"),
              *socket = playback_field(&playback_json, root, "unix-socket");
@@ -133,7 +159,8 @@ static bool piccap_reply(void *h, void *m, void *ctx) {
             strtoul(playback_json.string(port), NULL, 10) == piccap_target.piccap_port && socket &&
             playback_json.type(socket) == 1 && !playback_json.boolean(socket);
         if (ok) {
-            if (!piccap_request(same ? 1 : 4)) {
+            int command = same ? (requested_source == MODE_PICCAP ? 5 : 1) : 4;
+            if (!piccap_request(command)) {
                 capture_source = SOURCE_PICCAP_STOPPING;
                 snprintf(piccap_error, sizeof(piccap_error), "PicCap endpoint request failed");
             }
@@ -177,9 +204,25 @@ static bool piccap_request(int command) {
                             (void *)(intptr_t)command, &piccap_token, &e);
     piccap_deadline = milliseconds() + 3000;
     error_free(&e);
-    if (command)
+    if (command && command != 5)
         piccap_action_at = milliseconds();
     return piccap_busy;
+}
+static void select_manual_source(unsigned selection, bool histogram_running, bool starting,
+                                 uint64_t now) {
+    if (retries.paused)
+        retry_reset(&retries);
+    if (selection == MODE_PICCAP)
+        handover_cooldown = 0;
+    else if (!piccap_owned && !histogram_running && piccap_installed()) {
+        /* Confirm the stop before opening the histogram, even if PicCap was
+         * started independently. */
+        piccap_owned = true;
+        capture_source = SOURCE_PICCAP_STOPPING;
+        next_piccap_probe = 0;
+    }
+    if (!piccap_owned && !histogram_running && !starting)
+        retry_source_transition(&retries, now);
 }
 /* Return true while PicCap owns capture or a stop confirmation is pending. */
 static bool handover_tick(void) {
@@ -225,10 +268,11 @@ static bool handover_tick(void) {
         if (!unknown_since)
             unknown_since = now;
     }
-    bool session = !CALIBRATION_ACTIVE && handover_enabled && target_piccap_compatible(&target) &&
+    bool forced = requested_source == MODE_PICCAP;
+    bool session = !CALIBRATION_ACTIVE && (forced || (requested_source == MODE_AUTO && handover_enabled)) && target_piccap_compatible(&target) &&
                    piccap_installed() && !retries.paused && !retries.blocked;
-    bool clear = session && protection == PLAYBACK_CLEAR && now - protection_at < 3000;
-    bool stable = clear && clear_samples >= 3 && now - clear_since >= CLEAR_STABLE_MS &&
+    bool clear = session && (forced || (protection == PLAYBACK_CLEAR && now - protection_at < 3000));
+    bool stable = clear && (forced || (clear_samples >= 3 && now - clear_since >= CLEAR_STABLE_MS)) &&
                   now >= handover_cooldown;
     if (capture_source == SOURCE_HISTOGRAM && stable) {
         piccap_target = target;

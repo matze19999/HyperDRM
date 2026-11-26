@@ -47,3 +47,8 @@ test-atomic_file
 test-json_protocol
 test-receiver_output
 test-service_lifecycle
+
+service/mqtt.json
+service/target.json
+service/calibration.json
+service/handover.json

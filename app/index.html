@@ -26,9 +26,10 @@ nav{border-bottom:1px solid #456185;padding-bottom:10px;margin-bottom:18px}nav b
 <button id="grantRoot" class="primary" style="display:none">Enable Root Access</button><p id="rootHint" style="display:none"><small>Homebrew Channel grants root to the HyperDRM service. The service then restarts with its updated permissions.</small></p>
 <div role="group" aria-label="Service controls"><button id="start" class="primary">Start</button><button id="stop">Stop</button><button id="refresh">Refresh status</button></div>
 <fieldset><legend>Automatic operation</legend><button id="autostart" role="switch" aria-checked="false">Autostart: Off</button><button id="handover" role="switch" aria-checked="false" disabled>Auto PicCap: Off</button>
+<button id="sourceMode">Source mode: Auto</button>
 <p><small>Autostart retries until the receiver is available. Auto PicCap uses PicCap for unprotected playback and HyperDRM for protected playback. Keep PicCap's own autostart off.</small></p></fieldset>
 <button id="calibrationShortcut">Auto Calibration</button><small>Measure a spatial profile for your TV.</small>
-<p><small id="endpoint">Priority 149 &middot; 10 updates per second</small></p><div id="regions" aria-label="Histogram colors"></div>
+<p><small id="endpoint">Priority 149</small></p><div id="regions" aria-label="Histogram colors"></div>
 <p><small>Adjust brightness, saturation and normal smoothing in Hyperion or HyperHDR.</small></p><small id="diagnostics"></small>
 </section>
 <section id="receiverPanel" aria-label="Receiver settings" style="display:none">
@@ -45,6 +46,18 @@ nav{border-bottom:1px solid #456185;padding-bottom:10px;margin-bottom:18px}nav b
 <div><button id="saveTarget" class="primary">Save receiver</button><button id="testConnection">Test connection</button></div><p id="testResult" role="status">Connection test: Not tested</p>
 <p><small>The JSON TCP port is usually 19444. Leave the token blank to keep the saved token. Saving updates the current session. Histogram capture defaults to 50 ms; choose 25–1000 ms in steps of 25. Lower values reduce latency and increase TV load. PicCap uses its own capture rate.</small></p>
 <p id="piccapTargetHint"><small>Auto PicCap uses the same IP and its FlatBuffer port, usually 19400. Enable the receiver's FlatBuffer server. Remote IPv6 uses HyperDRM.</small></p></fieldset>
+<fieldset><legend>Home Assistant MQTT</legend>
+<button id="mqttEnabled" role="switch" aria-checked="false">MQTT: Off</button>
+<div class="fields">
+<div id="mqttHostField" class="field" tabindex="0" role="button" aria-label="Broker IP, press OK to edit"><label>Broker IP<input id="mqttHost" tabindex="-1" readonly value="127.0.0.1" maxlength="45" spellcheck="false"></label></div>
+<div id="mqttPortField" class="field narrow" tabindex="0" role="button" aria-label="Broker port, press OK to edit"><label>Broker port<input id="mqttPort" tabindex="-1" readonly type="number" min="1" max="65535" value="1883"></label></div>
+<div id="mqttUserField" class="field" tabindex="0" role="button" aria-label="Broker username, press OK to edit"><label>Username<input id="mqttUser" tabindex="-1" readonly maxlength="128" spellcheck="false"></label></div>
+<div id="mqttPasswordField" class="field" tabindex="0" role="button" aria-label="Broker password, press OK to edit"><label>Password<input id="mqttPassword" tabindex="-1" readonly type="password" maxlength="256" autocomplete="off"></label></div>
+</div>
+<label><input id="mqttClearPassword" type="checkbox"> Remove saved password</label>
+<div><button id="mqttSave" class="primary">Save MQTT settings</button></div>
+<p id="mqttStatus" role="status">Checking MQTT status...</p><small>Use a trusted local broker. This connection uses plain MQTT. Home Assistant discovers the device automatically when both use the same broker.</small>
+</fieldset>
 </section>
 <section id="calibrationPanel" aria-label="TV calibration" style="display:none">
 <p id="profileStatus">Detecting TV model...</p>
@@ -57,4 +70,4 @@ nav{border-bottom:1px solid #456185;padding-bottom:10px;margin-bottom:18px}nav b
 <div id="customEditor" style="display:none"><div id="customProfileField" class="field wide" tabindex="0" role="button" aria-label="Custom profile JSON, press OK to edit"><label>Custom model profile JSON<textarea id="customProfile" tabindex="-1" readonly rows="4" maxlength="2048" disabled spellcheck="false"></textarea></label></div></div>
 </fieldset></section>
 <button id="cancelCalibration" disabled>Cancel calibration</button><video id="calibrationVideo" src="calibration.mp4" muted preload="auto" playsinline></video>
-<script src="version.js"></script><script src="remote.js"></script><script src="calibration.js"></script><script src="navigation.js"></script><script src="app.js"></script><script src="wizard.js"></script></html>
+<script src="version.js"></script><script src="remote.js"></script><script src="calibration.js"></script><script src="navigation.js"></script><script src="app.js"></script><script src="mqtt-ui.js"></script><script src="wizard.js"></script></html>

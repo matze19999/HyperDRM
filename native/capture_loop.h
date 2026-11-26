@@ -2,6 +2,7 @@
 static int tick(void *unused) {
     (void)unused;
     uint64_t now = milliseconds();
+    mqtt_service_tick(now);
     unsigned long acknowledged = receiver_runtime.output.acknowledgements;
     output_tick(&receiver_runtime.output, &playback_json, now);
     if (receiver_runtime.output.stage == OUTPUT_FAILED &&
@@ -43,7 +44,8 @@ static int tick(void *unused) {
     test_tick(&playback_json, now);
     layout_refresh_tick(&playback_json, now, capture_ctx.handle || capture_source == SOURCE_PICCAP,
                         &receiver_layout);
-    stream_tick(&playback_json, now, handover_enabled && !retries.paused && !retries.blocked);
+    stream_tick(&playback_json, now, (piccap_owned || requested_source == MODE_PICCAP ||
+                 (requested_source == MODE_AUTO && handover_enabled)) && !retries.paused && !retries.blocked);
     bool owned = handover_tick();
     bridge_tick(now, &capture_ctx);
     if (owned)

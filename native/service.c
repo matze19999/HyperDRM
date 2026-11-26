@@ -184,9 +184,13 @@ static void release_capture(bool clear_output) {
 static void stop_capture(void) {
     release_capture(true);
 }
+static char *command_reply;
 static bool respond(void *h, void *m, const char *s) {
-    if (!h || !m)
+    if (!h || !m) {
+        if (command_reply)
+            snprintf(command_reply, 512, "%s", s);
         return true;
+    }
     LSError e;
     error_init(&e);
     bool ok = reply(h, m, s, &e);
@@ -199,6 +203,7 @@ static bool respond(void *h, void *m, const char *s) {
 #include "receiver_stream.h"
 #include "source_bridge.h"
 #include "service_api.h"
+#include "mqtt_service.h"
 #include "dark_color.h"
 #include "capture_loop.h"
 static void *symbol(void *lib, const char *name) {
@@ -229,6 +234,7 @@ int main(void) {
     cancel_call = symbol(ls, "LSCallCancel");
     if (playback_json_init(&playback_json)) {
         handover_load();
+        mqtt_config_load();
         target_load(&playback_json, TARGET_PREF, &target);
         calibration_load(&playback_json, CALIBRATION_PREF);
     }
@@ -255,6 +261,9 @@ int main(void) {
                         {"restartService", restart_service, 0},
                         {"handover", handover, 0},
                         {"settings", settings, 0},
+                        {"mqttSettings", mqtt_settings, 0},
+                        {"mqttStatus", mqtt_status, 0},
+                        {"sourceMode", source_mode, 0},
                         {"testConnection", test_connection, 0},
                         {"calibration", set_calibration, 0},
                         {"calibrationSession", calibration_session, 0},
@@ -275,12 +284,14 @@ int main(void) {
         iterate(NULL, 0);
         usleep(10000);
     }
+    mqtt_close(milliseconds(), NULL);
     stream_close(milliseconds());
     test_close();
     stop_capture();
     output_close(&receiver_runtime.output);
     if (piccap_owned) {
         handover_enabled = false;
+        requested_source = MODE_HYPERDRM;
         retry_pause(&retries);
         uint64_t deadline = milliseconds() + 4000;
         while (piccap_owned && milliseconds() < deadline) {

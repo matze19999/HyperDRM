@@ -94,9 +94,7 @@ static bool stop(void *h, void *m, void *ctx) {
     }
     return respond(h, m, "{\"returnValue\":true,\"running\":false}");
 }
-static bool autostart(void *h, void *m, void *ctx) {
-    (void)ctx;
-    const char *p = m ? payload(m) : NULL;
+static bool autostart_request(void *h, void *m, const char *p) {
     bool enabled;
     if (p && strcmp(p, "{\"enabled\":true}") == 0)
         enabled = true;
@@ -121,6 +119,10 @@ static bool autostart(void *h, void *m, void *ctx) {
                    enabled ? "{\"returnValue\":true,\"autostart\":true}"
                            : "{\"returnValue\":true,\"autostart\":false}");
 }
+static bool autostart(void *h, void *m, void *ctx) {
+    (void)ctx;
+    return autostart_request(h, m, payload(m));
+}
 static bool restart_service(void *h, void *m, void *ctx) {
     (void)ctx;
     if (strcmp(payload(m), "{}"))
@@ -130,9 +132,7 @@ static bool restart_service(void *h, void *m, void *ctx) {
     quitting = 1;
     return ok;
 }
-static bool handover(void *h, void *m, void *ctx) {
-    (void)ctx;
-    const char *p = payload(m);
+static bool handover_request(void *h, void *m, const char *p) {
     bool enabled;
     if (strcmp(p, "{\"enabled\":true}") == 0)
         enabled = true;
@@ -156,10 +156,13 @@ static bool handover(void *h, void *m, void *ctx) {
     next_media_probe = 0;
     return respond(h, m, "{\"returnValue\":true}");
 }
-static bool settings(void *h, void *m, void *ctx) {
+static bool handover(void *h, void *m, void *ctx) {
     (void)ctx;
+    return handover_request(h, m, payload(m));
+}
+static bool settings_request(void *h, void *m, const char *p) {
     TargetConfig next = target;
-    if (!playback_json.lib || !target_parse(&playback_json, payload(m), &next))
+    if (!playback_json.lib || !target_parse(&playback_json, p, &next))
         return respond(h, m,
                        "{\"returnValue\":false,\"errorText\":\"Enter a valid IPv4/IPv6 address, "
                        "integer port (1-65535), receiver and optional API token\"}");
@@ -181,6 +184,10 @@ static bool settings(void *h, void *m, void *ctx) {
     if (active && !retries.paused && !retries.blocked)
         retries.due = milliseconds();
     return respond(h, m, "{\"returnValue\":true}");
+}
+static bool settings(void *h, void *m, void *ctx) {
+    (void)ctx;
+    return settings_request(h, m, payload(m));
 }
 static bool test_connection(void *h, void *m, void *ctx) {
     (void)ctx;

@@ -6,6 +6,17 @@ HOOK=/var/lib/webosbrew/init.d/60-histogramhyperion
 [ -x "$TARGET" ] && [ -f "$SERVICE_DIR/services.json" ] || exit 0
 command -v luna-send >/dev/null 2>&1 || exit 0
 command -v timeout >/dev/null 2>&1 || exit 0
+case "$0" in
+  */61-hyperdrm-mqtt)
+    (
+      while [ -x "$TARGET" ] && [ -L "$0" ] && [ "$(readlink "$0")" = "$SERVICE_DIR/boot.sh" ]; do
+        result=$(timeout 12 luna-send -n 1 luna://org.webosbrew.histogramhyperion.service/mqttStatus '{}' 2>&1)
+        case "$result" in *'"returnValue":true'*) exit 0 ;; esac
+        sleep 5
+      done
+    ) >/dev/null 2>&1 </dev/null &
+    exit 0 ;;
+esac
 (
   echo 'HyperDRM boot start requested'
   while [ -x "$TARGET" ] && [ -f "$SERVICE_DIR/services.json" ] && [ -L "$HOOK" ] && [ "$(readlink "$HOOK")" = "$SERVICE_DIR/boot.sh" ]; do

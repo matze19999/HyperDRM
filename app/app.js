@@ -52,7 +52,7 @@ function showProfile() {
 }
 
 function call(method, done, data) {
-    if (!versionCompatible && ['start', 'autostart', 'handover', 'settings', 'testConnection', 'calibration', 'calibrationSession', 'calibrationDraft'].indexOf(method) >= 0 && !(method === 'calibrationSession' && data && data.enabled === false)) {
+    if (!versionCompatible && ['start', 'autostart', 'handover', 'settings', 'testConnection', 'calibration', 'calibrationSession', 'calibrationDraft', 'mqttSettings', 'sourceMode'].indexOf(method) >= 0 && !(method === 'calibrationSession' && data && data.enabled === false)) {
         done({
             returnValue: false,
             errorText: 'App and service versions do not match. Finish the update first.'
@@ -130,7 +130,7 @@ function display(result) {
         document.getElementById('receiver').textContent = 'Receiver: ' + receiver;
     }
     document.getElementById('token').placeholder = result.tokenSet ? 'Saved token (leave blank to keep)' : 'No token saved';
-    if (result.endpoint) document.getElementById('endpoint').textContent = result.receiver + ' · ' + result.endpoint + ' · Priority 149 · 10 updates per second';
+    if (result.endpoint) document.getElementById('endpoint').textContent = result.receiver + ' · ' + result.endpoint + ' · Priority 149 · ' + (result.captureIntervalMs || 50) + ' ms capture interval';
     var t = result.connectionTest;
     if (t) document.getElementById('testResult').textContent = 'Connection test: ' + t.state + (t.state === 'Passed' ? ' · ' + t.ledCount + ' LEDs · ' + t.elapsedMs + ' ms' : '') + (t.error ? ' · ' + t.error : '');
     document.getElementById('testConnection').disabled = !!t && ['Connecting', 'Sending request', 'Checking authentication', 'Reading LED layout'].indexOf(t.state) >= 0;
@@ -400,6 +400,6 @@ document.getElementById('editProfile').onclick = function() {
     showProfile();
     if (advancedProfile) document.getElementById('customProfileField').focus();
 };
-setupRemoteNavigation(['overviewTab', 'receiverTab', 'calibrationTab', 'reloadService', 'grantRoot', 'start', 'stop', 'refresh', 'autostart', 'handover', 'calibrationShortcut', 'receiver', 'hostField', 'portField', 'piccapPortField', 'captureIntervalField', 'tokenField', 'clearToken', 'saveTarget', 'testConnection', 'calibrate', 'validateCalibration', 'profile', 'saveProfile', 'editProfile', 'customProfileField', 'cancelCalibration'].map(function(id) {
+setupRemoteNavigation(['overviewTab', 'receiverTab', 'calibrationTab', 'reloadService', 'grantRoot', 'start', 'stop', 'refresh', 'autostart', 'handover', 'sourceMode', 'calibrationShortcut', 'receiver', 'hostField', 'portField', 'piccapPortField', 'captureIntervalField', 'tokenField', 'clearToken', 'saveTarget', 'testConnection', 'mqttEnabled', 'mqttHostField', 'mqttPortField', 'mqttUserField', 'mqttPasswordField', 'mqttClearPassword', 'mqttSave', 'calibrate', 'validateCalibration', 'profile', 'saveProfile', 'editProfile', 'customProfileField', 'cancelCalibration'].map(function(id) {
     return document.getElementById(id);
-}), document, window);
+}).filter(Boolean), document, window);

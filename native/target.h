@@ -11,8 +11,10 @@
 #include <unistd.h>
 #include "playback.h"
 #include "atomic_file.h"
+#ifndef TARGET_PREF
 #define TARGET_PREF                                                                                \
     "/media/developer/apps/usr/palm/services/org.webosbrew.histogramhyperion.service/target.json"
+#endif
 typedef struct {
     char host[46], receiver[16], token[257];
     unsigned port, piccap_port, capture_interval;

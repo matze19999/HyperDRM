@@ -84,10 +84,9 @@ static void model_tick(uint64_t now) {
         calibration_ctx.next_model_probe = now + 60000;
     }
 }
-static bool set_calibration(void *h, void *m, void *ctx) {
-    (void)ctx;
+static bool set_calibration_request(void *h, void *m, const char *p) {
     Calibration next = calibration;
-    if (!playback_json.lib || !calibration_parse(&playback_json, payload(m), &next))
+    if (!playback_json.lib || !calibration_parse(&playback_json, p, &next))
         return respond(
             h, m,
             "{\"returnValue\":false,\"errorText\":\"Select a valid profile; custom profiles need a "
@@ -99,4 +98,8 @@ static bool set_calibration(void *h, void *m, void *ctx) {
     calibration_generation++;
     layout_refresh_reset(milliseconds());
     return respond(h, m, "{\"returnValue\":true}");
+}
+static bool set_calibration(void *h, void *m, void *ctx) {
+    (void)ctx;
+    return set_calibration_request(h, m, payload(m));
 }

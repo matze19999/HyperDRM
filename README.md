@@ -43,7 +43,7 @@ Only the own service is modified. Optional Auto PicCap can configure its receive
 
 ## Installation
 
-The current package is [HyperDRM_0.13.4_arm.ipk](HyperDRM_0.13.4_arm.ipk). Install it using the TV's webOS/Homebrew package installation workflow.
+The current package is [HyperDRM_0.14.2_arm.ipk](HyperDRM_0.14.2_arm.ipk). Install it using the TV's webOS/Homebrew package installation workflow.
 
 Elevate the installed own service through Homebrew Channel:
 
@@ -255,3 +255,55 @@ Histogram near-black handling suppresses colors with a maximum RGB channel of 16
 Thin letterbox detection compares both edges against lit interior histogram samples and requires a consistently dark upper edge for at least two seconds. Histogram probes cannot determine the exact bar height or guarantee detection on every scene.
 
 Histogram capture defaults to 50 ms. The Receiver panel provides a saved Capture interval (ms) setting from 25 to 1000 in steps of 25. Existing settings without this field use 50 ms. PicCap capture timing is unchanged.
+
+### Home Assistant over MQTT
+
+Open **Receiver → Home Assistant MQTT**, enter the broker IP and TCP port (default
+1883), optionally enter a username and password, enable MQTT and save. The
+Home Assistant MQTT integration must use the same broker and have discovery
+enabled with its default `homeassistant` prefix. MQTT is optional and disabled
+until configured. It reconnects automatically and starts at TV boot independently
+of the ambient-lighting autostart setting.
+
+This connection is MQTT 3.1.1 over plain TCP and accepts a numeric IPv4 or IPv6
+address. Use a trusted LAN or VPN and a dedicated broker user. Grant the TV
+permission to publish `homeassistant/+/hdr-<id>/+/config` and its own
+`hyperdrm/hdr-<id>/#`, and to subscribe to its `hyperdrm/hdr-<id>/set/+` topics.
+Only trusted controllers should be able to publish commands to this device.
+
+**Source mode** selects **Auto**, **HyperDRM** or **PicCap** and is saved. Auto
+honors the automatic PicCap handover setting. The manual PicCap choice requires
+PicCap installed and a compatible FlatBuffer destination. Selecting a manual
+source resumes a stopped session and can take over PicCap if it was started
+separately. A switch to HyperDRM waits for PicCap to stop. If its receiver
+connection fails, HyperDRM can take over while PicCap is retried. **Sending
+source** reports recent acknowledged histogram output, a connected PicCap
+managed by HyperDRM, or **None**. It describes this app's output and may differ
+from the receiver's displayed priority if another app overrides it.
+
+The app shows the base topic `hyperdrm/hdr-<id>`. Home Assistant discovers
+lighting, autostart, handover, source, receiver settings, capture interval,
+calibration profile and connection diagnostics. The retained `state` JSON
+contains current settings, the custom calibration, source and connection state,
+and black-bar status. The retained `availability` topic uses `online` and
+`offline`. There are no per-frame values or diagnostic counters.
+
+Publish commands without retention to `<base>/set/<key>`. The non-retained
+`<base>/result` topic reports whether a command was accepted. A broker change
+may close the old connection before returning a result.
+
+| Key | Payload |
+| --- | --- |
+| `running`, `autostart`, `piccapHandover` | `ON` or `OFF` |
+| `sourceMode` | `Auto`, `HyperDRM` or `PicCap` |
+| `receiver`, `host`, `port`, `piccapPort`, `captureIntervalMs` | Receiver name, numeric IP or integer value, respectively |
+| `profile` | `auto`, `g4`, `average` or `custom` |
+| `calibration` | JSON with `profile` and optional `model` and `points`, using the same format as app settings |
+| `receiverSettings` | JSON with `host`, `port`, `receiver` and optional `piccapPort`, `captureIntervalMs`, `token` and `clearToken` |
+| `token`, `clearToken` | New receiver API token or `PRESS` to clear |
+| `mqttSettings` | JSON with fields to change: `enabled`, `host`, `port`, `username`, `password`. An empty password clears it. |
+| `test` | `PRESS` to test the receiver connection |
+
+Configure the initial broker in the TV app. Use the TV app to re-enable a
+disabled connection or recover from invalid broker settings. Passwords and API
+tokens are write-only and omitted from discovery and state messages.

@@ -16,7 +16,7 @@ def tar_bytes(entries):
 entries=[]
 for directory,target in [('app','applications/'+ID),('service','services/'+ID+'.service'),('package','packages/'+ID)]:
     for path in sorted((ROOT/directory).iterdir()):
-        if path.is_file() and path.name not in {"led-mapping.txt", "led-interpolation.txt"}:entries.append(('usr/palm/'+target+'/'+path.name,path.read_bytes(),0o755 if path.name in {'histogram-service','boot.sh'} else 0o644))
+        if path.is_file() and path.name not in {"led-mapping.txt", "led-interpolation.txt", "target.json", "calibration.json", "handover.json", "mqtt.json"}:entries.append(('usr/palm/'+target+'/'+path.name,path.read_bytes(),0o755 if path.name in {'histogram-service','boot.sh'} else 0o644))
 control=f'Package: {ID}\nVersion: {VERSION}\nArchitecture: arm\nMaintainer: Local development\nDescription: HyperDRM ambient light for webOS and Hyperion\nSection: misc\nPriority: optional\n\n'.encode()
 members=[('debian-binary',b'2.0\n'),('control.tar.gz',tar_bytes([('control',control,0o644)])),('data.tar.gz',tar_bytes(entries))]
 out=bytearray(b'!<arch>\n')

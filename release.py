@@ -63,7 +63,7 @@ def verify_package(version):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--push', action='store_true')
-    parser.add_argument('--sanitizers', action='store_true', help='Run parser, atomic-save, output and service lifecycle tests with ASan/UBSan')
+    parser.add_argument('--sanitizers', action='store_true', help='Run parser, atomic-save, output, service lifecycle and MQTT tests with ASan/UBSan')
     options = parser.parse_args()
     version = synchronize()
     run(sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*.py')
@@ -78,7 +78,7 @@ def main():
         linux('gcc', '-Wall', '-Wextra', '-Werror', '-O2', str(test.relative_to(ROOT)).replace('\\', '/'), '-ldl', '-lm', '-o', name)
         linux(name)
     if options.sanitizers:
-        for name in ('json_protocol', 'atomic_file', 'receiver_output', 'service_lifecycle'):
+        for name in ('json_protocol', 'atomic_file', 'receiver_output', 'service_lifecycle', 'mqtt'):
             destination = '/tmp/hyperdrm-sanitized-' + name
             linux('gcc', '-Wall', '-Wextra', '-Werror', '-O1', '-g', '-fsanitize=address,undefined',
                   'native/test_' + name + '.c', '-ldl', '-lm', '-o', destination)
