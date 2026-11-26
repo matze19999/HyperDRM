@@ -4,6 +4,7 @@ static int tick(void *unused) {
     uint64_t now = milliseconds();
     mqtt_service_tick(now);
     unsigned long acknowledged = receiver_frames();
+    now = milliseconds();
     receiver_tick(&playback_json, now);
     if (receiver_failed() && (capture_ctx.handle || receiver_runtime.starting)) {
         char error[128];
@@ -95,6 +96,7 @@ static int tick(void *unused) {
     if (capture_ctx.sample_at && now - capture_ctx.sample_at < target_capture_interval(&target))
         return 1;
     Histogram hist[16] = {0};
+    uint64_t sample_start = milliseconds();
     int rc = vt_get(capture_ctx.handle, hist);
     bool populated = !rc && histogram_populated(hist);
     if (!populated) {
@@ -110,7 +112,7 @@ static int tick(void *unused) {
             (unsigned)(1500 - (now - capture_ctx.continuity.missing_at));
         OutputFrame frame =
             frame_build(held, receiver_layout.blends, receiver_layout.count, hold_duration);
-        bool failed = !frame_send(&frame, hold_duration, now);
+        bool failed = !frame_send(&frame, hold_duration, 0);
         frame_release(&frame);
         if (failed) {
             set_error("Receiver connection lost while holding colors");
@@ -120,6 +122,7 @@ static int tick(void *unused) {
         return 1;
     }
     capture_ctx.sample_at = now;
+    sample_timing_record(&capture_ctx.sample_timing, sample_start);
     capture_ctx.sample_sequence++;
     unsigned aggregate[3] = {0};
     for (int i = 0; i < 16; i++) {
@@ -168,18 +171,18 @@ static int tick(void *unused) {
     }
     for (int c = 0; c < 3; c++)
         capture_ctx.sent_rgb[c] = (unsigned char)(aggregate[c] / 16);
-    dark_color_filter(capture_ctx.sent_rgb);
+    dark_color_filter(capture_ctx.sent_rgb, target.black_cutoff);
     unsigned char boosted_mean[3];
     boost_color(capture_ctx.sent_rgb, boosted_mean);
     memcpy(capture_ctx.sent_rgb, boosted_mean, 3);
     unsigned char mapped_rgb[16][3], stable_rgb[16][3];
     calibration_colors(capture_ctx.rgb, mapped_rgb);
     for (unsigned i = 0; i < 16; i++)
-        dark_color_filter(mapped_rgb[i]);
+        dark_color_filter(mapped_rgb[i], target.black_cutoff);
     continuity_frame(&capture_ctx.continuity, true, mapped_rgb, now, stable_rgb);
     receiver_layout.interpolation = receiver_layout.count && calibration_effective() != CAL_AVERAGE;
     OutputFrame frame = frame_build(stable_rgb, receiver_layout.blends, receiver_layout.count, 1500);
-    int failed = !frame_send(&frame, 1500, now);
+    int failed = !frame_send(&frame, 1500, sample_start);
     frame_release(&frame);
     if (failed) {
         set_error("Receiver connection lost");

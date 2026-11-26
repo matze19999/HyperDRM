@@ -107,19 +107,27 @@ static void fixture(PlaybackJson *json, int mode) {
     unsigned iterations = 0;
     for (; iterations < 5000; iterations++) {
         output_tick(&output, json, 1000 + iterations);
-        if (output.acknowledgements == 1 && queued && !stopping)
+        if (output.acknowledgements == 1 && queued && !stopping) {
             assert(output.awaiting && !output.latest);
+            assert(output.confirmed_timing.sampled == 900);
+        }
         if (output.stage == OUTPUT_FAILED || (stopping && output.stage == OUTPUT_IDLE))
             break;
         if (output.stage == OUTPUT_READY && !first) {
             first = true;
             assert(output_frame(&output, "{\"command\":\"color\",\"color\":[1,2,3]}\n"));
+            output.latest_timing = (FrameTiming){.sampled = 900, .queued = 901};
         } else if (first && output.awaiting && !queued) {
             queued = true;
             assert(output_frame(&output, "{\"command\":\"color\",\"color\":[4,5,6]}\n"));
+            output.latest_timing = (FrameTiming){.sampled = 920, .queued = 921};
             assert(output_frame(&output, "{\"command\":\"color\",\"color\":[7,8,9]}\n"));
+            output.latest_timing = (FrameTiming){.sampled = 940, .queued = 941};
         }
         if (output.acknowledgements == 2 && !stopping) {
+            assert(output.confirmed_timing.sampled == 940 && output.confirmed_timing.queued == 941);
+            assert(output.confirmed_timing.sent >= 941 &&
+                   output.confirmed_timing.confirmed >= output.confirmed_timing.sent);
             stopping = true;
             output_stop(&output, 1000 + iterations, true);
         }

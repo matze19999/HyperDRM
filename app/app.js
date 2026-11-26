@@ -139,6 +139,7 @@ function display(result) {
         document.getElementById('port').value = result.port;
         document.getElementById('piccapPort').value = result.piccapPort || 19400;
         document.getElementById('captureInterval').value = result.captureIntervalMs || 50;
+        document.getElementById('blackCutoff').value = typeof result.blackCutoff === 'number' ? result.blackCutoff : 16;
         receiver = result.receiver;
         document.getElementById('receiver').textContent = 'Receiver: ' + receiver;
         output = result.output || 'json';
@@ -147,6 +148,18 @@ function display(result) {
     }
     document.getElementById('token').placeholder = result.tokenSet ? 'Saved token (leave blank to keep)' : 'No token saved';
     if (result.endpoint) document.getElementById('endpoint').textContent = result.receiver + ' · ' + result.endpoint + ' · Priority 149 · ' + (result.captureIntervalMs || 50) + ' ms capture interval';
+    var timingLabel = document.getElementById('captureTiming');
+    if (timingLabel) {
+        var timing = result.timing;
+        var cadence = timing && timing.sampleIntervalMs > 0
+            ? 'Histogram cadence: ' + timing.sampleIntervalMs.toFixed(1) + ' ms (' +
+                (1000 / timing.sampleIntervalMs).toFixed(1) + '/s). ' : '';
+        timingLabel.textContent = timing && timing.totalMs >= 0
+            ? cadence + 'Sample to receiver confirmation: ' + timing.totalMs + ' ms (capture and render ' +
+                timing.captureMs + ' ms, queue and send ' + timing.queueMs + ' ms, confirmation ' +
+                timing.ackMs + ' ms).'
+            : cadence;
+    }
     var t = result.connectionTest;
     if (t) document.getElementById('testResult').textContent = 'Connection test: ' + t.state + (t.state === 'Passed' ? ' · ' + t.ledCount + ' LEDs · ' + t.elapsedMs + ' ms' : '') + (t.error ? ' · ' + t.error : '');
     document.getElementById('testConnection').disabled = !!t && ['Connecting', 'Sending request', 'Checking authentication', 'Reading LED layout'].indexOf(t.state) >= 0;
@@ -318,7 +331,7 @@ document.getElementById('handover').onclick = function() {
         enabled: button.getAttribute('aria-checked') !== 'true'
     });
 };
-['host', 'port', 'piccapPort', 'captureInterval', 'token', 'clearToken'].forEach(function(id) {
+['host', 'port', 'piccapPort', 'captureInterval', 'blackCutoff', 'token', 'clearToken'].forEach(function(id) {
     document.getElementById(id).addEventListener('input', function() {
         targetDirty = true;
     });
@@ -357,8 +370,15 @@ document.getElementById('saveTarget').onclick = function() {
         showActionError('Capture interval must be 25–1000 ms in steps of 25.');
         return;
     }
+    var cutoffInput = document.getElementById('blackCutoff').value;
+    var cutoff = Number(cutoffInput);
+    if (cutoffInput === '' || !Number.isInteger(cutoff) || cutoff < 0 || cutoff > 64) {
+        showActionError('Black cutoff must be an integer from 0 to 64.');
+        return;
+    }
     var settings = {
         captureIntervalMs: interval,
+        blackCutoff: cutoff,
         piccapPort: flatPort,
         host: document.getElementById('host').value.trim(),
         port: port,
@@ -450,6 +470,6 @@ document.getElementById('geometry').onclick = function() {
     }
     showProfile();
 };
-setupRemoteNavigation(['overviewTab', 'receiverTab', 'calibrationTab', 'reloadService', 'grantRoot', 'start', 'stop', 'refresh', 'autostart', 'handover', 'sourceMode', 'calibrationShortcut', 'receiver', 'output', 'hostField', 'portField', 'piccapPortField', 'captureIntervalField', 'tokenField', 'clearToken', 'saveTarget', 'testConnection', 'mqttEnabled', 'mqttHostField', 'mqttPortField', 'mqttUserField', 'mqttPasswordField', 'mqttClearPassword', 'mqttSave', 'mqttRestoreRoot', 'calibrate', 'validateCalibration', 'profile', 'saveProfile', 'editProfile', 'geometry', 'customProfileField', 'cancelCalibration'].map(function(id) {
+setupRemoteNavigation(['overviewTab', 'receiverTab', 'calibrationTab', 'reloadService', 'grantRoot', 'start', 'stop', 'refresh', 'autostart', 'handover', 'sourceMode', 'calibrationShortcut', 'receiver', 'output', 'hostField', 'portField', 'piccapPortField', 'captureIntervalField', 'blackCutoffField', 'tokenField', 'clearToken', 'saveTarget', 'testConnection', 'mqttEnabled', 'mqttHostField', 'mqttPortField', 'mqttUserField', 'mqttPasswordField', 'mqttClearPassword', 'mqttSave', 'mqttRestoreRoot', 'calibrate', 'validateCalibration', 'profile', 'saveProfile', 'editProfile', 'geometry', 'customProfileField', 'cancelCalibration'].map(function(id) {
     return document.getElementById(id);
 }).filter(Boolean), document, window);

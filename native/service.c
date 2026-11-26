@@ -173,6 +173,7 @@ static void release_capture(bool clear_output) {
     receiver_layout.count = 0;
     receiver_layout.interpolation = false;
     capture_ctx.color_valid = false;
+    capture_ctx.sample_timing = (SampleTiming){0};
     memset(capture_ctx.rgb, 0, sizeof(capture_ctx.rgb));
     memset(capture_ctx.sent_rgb, 0, sizeof(capture_ctx.sent_rgb));
     receiver_runtime.starting = false;

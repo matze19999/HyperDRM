@@ -14,6 +14,14 @@ static bool status(void *h, void *m, void *ctx) {
     }
     safe[n] = 0;
     uint64_t now = milliseconds();
+    FrameTiming frame = receiver_confirmed_timing();
+    bool fresh_timing = capture_ctx.handle && capture_ctx.color_valid && frame.sampled &&
+                        frame.sampled <= frame.queued && frame.queued <= frame.sent &&
+                        frame.sent <= frame.confirmed && frame.confirmed <= now &&
+                        now - frame.confirmed <= 3000;
+    unsigned period = capture_ctx.handle && capture_ctx.color_valid
+                          ? capture_ctx.sample_timing.period_tenths
+                          : 0;
     char report[512];
     size_t k = 0;
     for (size_t i = 0; calibration_ctx.message[i] && k + 2 < sizeof(report); i++) {
@@ -73,6 +81,14 @@ static bool status(void *h, void *m, void *ctx) {
                      (capture_ctx.continuity.fading || bridge_phase == BRIDGE_FADING) ? "true"
                                                                                       : "false",
                      CALIBRATION_ACTIVE ? "true" : "false");
+    used += snprintf(json + used, sizeof(json) - used,
+                     "\"blackCutoff\":%u,\"timing\":{\"sampleIntervalMs\":%.1f,"
+                     "\"captureMs\":%lld,\"queueMs\":%lld,\"ackMs\":%lld,\"totalMs\":%lld},",
+                     target.black_cutoff, period / 10.0,
+                     fresh_timing ? (long long)(frame.queued - frame.sampled) : -1,
+                     fresh_timing ? (long long)(frame.sent - frame.queued) : -1,
+                     fresh_timing ? (long long)(frame.confirmed - frame.sent) : -1,
+                     fresh_timing ? (long long)(frame.confirmed - frame.sampled) : -1);
     used +=
         snprintf(json + used, sizeof(json) - used,
                  "\"returnValue\":true,\"captureIntervalMs\":%u,\"piccapPort\":%u,\"connectionTest\":{\"state\":\"%s\","

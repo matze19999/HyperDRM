@@ -46,7 +46,7 @@ Only the own service is modified. Optional Auto PicCap can configure its receive
 
 To browse and install HyperDRM from **Homebrew Channel**, open **Settings → Add repository** and enter the [raw repository URL](https://raw.githubusercontent.com/matze19999/HyperDRM/main/repo.json). Then return to the catalog and select **HyperDRM**. The TV needs root access and a compatible LG histogram implementation.
 
-The current package is [HyperDRM_0.15.5_arm.ipk](HyperDRM_0.15.5_arm.ipk). Install it using the TV's webOS/Homebrew package installation workflow.
+The current package is [HyperDRM_0.15.6_arm.ipk](HyperDRM_0.15.6_arm.ipk). Install it using the TV's webOS/Homebrew package installation workflow.
 
 Elevate the installed own service through Homebrew Channel:
 
@@ -289,13 +289,13 @@ and briefly interrupts ambient lighting; it never runs automatically.
 receiver-output and simulated service-lifecycle tests with ASan/UBSan. These host
 tests do not replace real LG capture and remote-control validation on a TV.
 
-Histogram near-black handling suppresses colors with a maximum RGB channel of 16 or less, gradually restores brightness between 16 and 32, and preserves brighter colors. This applies only to histogram output; PicCap, receiver calibration and raw calibration samples are unchanged.
+Set **Black cutoff** in the Receiver panel from 0 to 64 (default 16). A value of 0 disables the filter. With a positive cutoff, values at or below it become black and fade in up to twice that value, above which colors stay unchanged. This applies only to histogram output; PicCap, receiver calibration and raw calibration samples are unchanged.
 
 Rectangle geometry computes histogram means and spatial blends in linear light (IEC 61966-2-1). This can raise the output of mixed dark and bright samples. Rim geometry preserves the existing color response.
 
 Thin letterbox detection compares both edges against lit interior histogram samples and requires a consistently dark upper edge for at least two seconds. Histogram probes cannot determine the exact bar height or guarantee detection on every scene.
 
-Histogram capture defaults to 50 ms. The Receiver panel provides a saved Capture interval (ms) setting from 25 to 1000 in steps of 25. Existing settings without this field use 50 ms. PicCap capture timing is unchanged.
+Histogram capture defaults to 50 ms. The Receiver panel provides a saved Capture interval (ms) setting from 25 to 1000 in steps of 25. Existing settings without this field use 50 ms. PicCap capture timing is unchanged. Overview shows the measured histogram cadence and the latest fresh frame timing through the JSON or FlatBuffer receiver acknowledgment. The breakdown separates capture and rendering, queue and send, and waiting for confirmation. It includes service polling delays and does not measure TV display processing or physical LED latency.
 
 ### Home Assistant over MQTT
 
@@ -339,10 +339,11 @@ may close the old connection before returning a result.
 | `sourceMode` | `Auto`, `HyperDRM` or `PicCap` |
 | `receiver`, `host`, `port`, `piccapPort`, `captureIntervalMs` | Receiver name, numeric IP or integer value, respectively |
 | `profile` | `auto`, `g4`, `average` or `custom` |
+| `blackCutoff` | Integer 0–64, where 0 disables the filter |
 | `output` | `json` or `flatbuffer` (HyperHDR only) |
 | `geometry` | `rim` or `rectangles` |
 | `calibration` | JSON with `profile` and optional `model`, `points`, `geometry` and `rectangles`, using the same format as app settings |
-| `receiverSettings` | JSON with `host`, `port`, `receiver` and optional `output`, `piccapPort`, `captureIntervalMs`, `token` and `clearToken` |
+| `receiverSettings` | JSON with `host`, `port`, `receiver` and optional `output`, `piccapPort`, `captureIntervalMs`, `blackCutoff`, `token` and `clearToken` |
 | `token`, `clearToken` | New receiver API token or `PRESS` to clear |
 | `mqttSettings` | JSON with fields to change: `enabled`, `host`, `port`, `username`, `password`. An empty password clears it. |
 | `test` | `PRESS` to test the receiver connection |

@@ -6,6 +6,7 @@
  * connection each. Requests are length-prefixed big-endian; each reply carries
  * an error string that is empty when the request was accepted. */
 #include "flatbuffer.h"
+#include "frame_timing.h"
 #include "target.h"
 
 #define FB_REPLY_LIMIT 65536
@@ -14,6 +15,7 @@ typedef struct {
     int fd;
     FlatbufferStage stage;
     uint64_t deadline;
+    FrameTiming pending_timing, queue_timing, confirmed_timing;
     uint8_t *replies, *queue, *pending;
     size_t replies_used, queue_length, queue_sent, pending_length;
     uint8_t *scratch;
@@ -36,6 +38,7 @@ static void fb_out_close(FlatbufferOutput *o) {
     o->queue_image = o->pending_image = false;
     o->deadline = 0;
     o->closing = o->awaiting = false;
+    o->pending_timing = o->queue_timing = o->confirmed_timing = (FrameTiming){0};
 }
 /* The scratch buffer is reused between sessions; release it once at shutdown. */
 static void fb_out_release(FlatbufferOutput *o) {
@@ -104,6 +107,7 @@ static bool fb_out_queue_request(FlatbufferOutput *o, size_t size, bool image, u
     o->queue_length = size + 4;
     o->queue_sent = 0;
     o->queue_image = image;
+    o->queue_timing = (FrameTiming){0};
     o->deadline = now + 3000;
     return true;
 }
@@ -134,10 +138,11 @@ static bool fb_out_frame(FlatbufferOutput *o, const void *rgb, int width, int he
     o->pending = framed;
     o->pending_length = size + 4;
     o->pending_image = true;
+    o->pending_timing = (FrameTiming){0};
     (void)now;
     return true;
 }
-static void fb_out_drain_replies(FlatbufferOutput *o) {
+static void fb_out_drain_replies(FlatbufferOutput *o, uint64_t now) {
     while (o->replies_used >= 4) {
         size_t size = ((size_t)o->replies[0] << 24) | ((size_t)o->replies[1] << 16) |
                       ((size_t)o->replies[2] << 8) | (size_t)o->replies[3];
@@ -171,6 +176,10 @@ static void fb_out_drain_replies(FlatbufferOutput *o) {
             return;
         } else if (o->queue_image) {
             o->frames++;
+            if (o->queue_timing.sampled) {
+                o->queue_timing.confirmed = now;
+                o->confirmed_timing = o->queue_timing;
+            }
         }
         o->awaiting = false;
         o->deadline = 0;
@@ -235,6 +244,7 @@ static void fb_out_tick(FlatbufferOutput *o, uint64_t now) {
             o->queue = NULL;
             o->queue_length = o->queue_sent = 0;
             o->awaiting = true;
+            o->queue_timing.sent = now;
         }
     }
     size_t available = FB_REPLY_LIMIT - o->replies_used;
@@ -250,7 +260,7 @@ static void fb_out_tick(FlatbufferOutput *o, uint64_t now) {
         }
         if (got > 0) {
             o->replies_used += (size_t)got;
-            fb_out_drain_replies(o);
+            fb_out_drain_replies(o, now);
             if (o->stage == FB_FAILED)
                 return;
         }
@@ -261,6 +271,7 @@ static void fb_out_tick(FlatbufferOutput *o, uint64_t now) {
         o->queue_length = o->pending_length;
         o->queue_sent = 0;
         o->queue_image = o->pending_image;
+        o->queue_timing = o->pending_timing;
         o->pending = NULL;
         o->pending_length = 0;
         o->pending_image = false;

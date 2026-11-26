@@ -3,6 +3,7 @@
 /* Main output connection. Every socket operation is nonblocking, with bounded
  * work per tick. One acknowledged command is in flight; only the newest unsent
  * color frame is retained. No Luna message or LG capture handle is owned here. */
+#include "frame_timing.h"
 typedef enum {
     OUTPUT_IDLE,
     OUTPUT_CONNECTING,
@@ -18,6 +19,7 @@ typedef struct {
     char *incoming, *request, *latest;
     size_t used, sent, length;
     uint64_t deadline;
+    FrameTiming latest_timing, request_timing, confirmed_timing;
     unsigned transaction, awaiting, count;
     LedBlend *mapping;
     unsigned long acknowledgements;
@@ -55,6 +57,7 @@ static bool output_request(ReceiverOutput *o, const char *line, uint64_t now) {
     o->length = strlen(o->request);
     o->sent = 0;
     o->awaiting = o->transaction;
+    o->request_timing = (FrameTiming){0};
     o->deadline = now + 3000;
     return true;
 }
@@ -85,6 +88,7 @@ static bool output_frame(ReceiverOutput *o, const char *line) {
         return false;
     free(o->latest);
     o->latest = next;
+    o->latest_timing = (FrameTiming){0};
     return true;
 }
 static void output_stop(ReceiverOutput *o, uint64_t now, bool clear) {
@@ -99,11 +103,12 @@ static void output_stop(ReceiverOutput *o, uint64_t now, bool clear) {
         return;
     }
     o->closing = true;
+    o->latest_timing = (FrameTiming){0};
     /* Allow the current transaction and the clear to finish asynchronously. */
     if (!o->awaiting)
         o->deadline = now + 3000;
 }
-static bool output_flush(ReceiverOutput *o, size_t *budget) {
+static bool output_flush(ReceiverOutput *o, size_t *budget, uint64_t now) {
     if (!o->request || !*budget)
         return true;
     size_t amount = o->length - o->sent;
@@ -121,7 +126,20 @@ static bool output_flush(ReceiverOutput *o, size_t *budget) {
     if (o->sent == o->length) {
         free(o->request);
         o->request = NULL;
+        o->request_timing.sent = now;
     }
+    return true;
+}
+static bool output_start_latest(ReceiverOutput *o, uint64_t now) {
+    if (o->stage != OUTPUT_READY || o->awaiting || !o->latest)
+        return true;
+    if (!output_request(o, o->latest, now)) {
+        output_fail(o, "Cannot allocate color request");
+        return false;
+    }
+    o->request_timing = o->latest_timing;
+    free(o->latest);
+    o->latest = NULL;
     return true;
 }
 static void output_tick(ReceiverOutput *o, PlaybackJson *json, uint64_t now) {
@@ -159,16 +177,10 @@ static void output_tick(ReceiverOutput *o, PlaybackJson *json, uint64_t now) {
             return;
         }
     }
-    if (o->stage == OUTPUT_READY && !o->awaiting && o->latest) {
-        if (!output_request(o, o->latest, now)) {
-            output_fail(o, "Cannot allocate color request");
-            return;
-        }
-        free(o->latest);
-        o->latest = NULL;
-    }
+    if (!output_start_latest(o, now))
+        return;
     size_t send_budget = 65536;
-    if (!output_flush(o, &send_budget))
+    if (!output_flush(o, &send_budget, now))
         return;
     size_t space = 2 * 1024 * 1024 - o->used;
     if (space > 65536)
@@ -235,6 +247,10 @@ static void output_tick(ReceiverOutput *o, PlaybackJson *json, uint64_t now) {
                 o->stage = OUTPUT_READY;
             } else {
                 o->acknowledgements++;
+                if (o->request_timing.sampled) {
+                    o->request_timing.confirmed = now;
+                    o->confirmed_timing = o->request_timing;
+                }
                 if (o->closing && !o->latest) {
                     json->put(root);
                     output_close(o);
@@ -250,14 +266,8 @@ static void output_tick(ReceiverOutput *o, PlaybackJson *json, uint64_t now) {
     }
     /* An ACK can free the slot after the first send pass. Use the remaining
      * byte budget to send the newest queued frame in this same tick. */
-    if (o->stage == OUTPUT_READY && !o->awaiting && o->latest) {
-        if (!output_request(o, o->latest, now)) {
-            output_fail(o, "Cannot allocate color request");
-            return;
-        }
-        free(o->latest);
-        o->latest = NULL;
-    }
-    output_flush(o, &send_budget);
+    if (!output_start_latest(o, now))
+        return;
+    output_flush(o, &send_budget, now);
 }
 #endif

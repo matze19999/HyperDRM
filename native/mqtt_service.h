@@ -116,6 +116,7 @@ static const struct MqttEntity {
     {"number", "port", "Receiver JSON port", "\"min\":1,\"max\":65535,\"step\":1,\"mode\":\"box\"", true},
     {"number", "piccapPort", "PicCap FlatBuffer port", "\"min\":1,\"max\":65535,\"step\":1,\"mode\":\"box\"", true},
     {"number", "captureIntervalMs", "Capture interval", "\"min\":25,\"max\":1000,\"step\":25,\"mode\":\"box\",\"unit_of_measurement\":\"ms\"", true},
+    {"number", "blackCutoff", "Black cutoff", "\"min\":0,\"max\":64,\"step\":1,\"mode\":\"box\"", true},
     {"select", "geometry", "Calibration geometry", "\"options\":[\"rim\",\"rectangles\"]", true},
     {"select", "profile", "Calibration profile", "\"options\":[\"auto\",\"g4\",\"average\",\"custom\"]", true},
     {"button", "test", "Test receiver connection", "\"payload_press\":\"PRESS\"", true},
@@ -137,7 +138,7 @@ static bool mqtt_publish_state(uint64_t now) {
                      "\"error\":%s,\"connectionTest\":\"%s\",\"letterbox\":\"%s\","
                      "\"running\":\"%s\",\"autostart\":\"%s\",\"piccapHandover\":\"%s\","
                      "\"receiver\":\"%s\",\"host\":\"%s\",\"port\":%u,\"piccapPort\":%u,"
-                     "\"captureIntervalMs\":%u,\"output\":\"%s\",\"profile\":\"%s\",\"effectiveProfile\":\"%s\",\"geometry\":\"%s\","
+                     "\"captureIntervalMs\":%u,\"blackCutoff\":%u,\"output\":\"%s\",\"profile\":\"%s\",\"effectiveProfile\":\"%s\",\"geometry\":\"%s\","
                      "\"piccapInstalled\":%s,\"piccapConnected\":%s,\"tokenSet\":%s,\"mqtt\":{"
                      "\"enabled\":true,\"host\":\"%s\",\"port\":%u,\"username\":%s,\"passwordSet\":%s},"
                      "\"customProfile\":{\"model\":\"%s\",\"geometry\":\"%s\",\"points\":[",
@@ -147,7 +148,7 @@ static bool mqtt_publish_state(uint64_t now) {
                      error, test_stage_name(), capture_ctx.handle && capture_ctx.letterbox_mode ? "ON" : "OFF",
                      !retries.paused && (capture_ctx.handle || receiver_runtime.starting || piccap_owned || retries.due) ? "ON" : "OFF",
                      boot_enabled() ? "ON" : "OFF", handover_enabled ? "ON" : "OFF",
-                     target.receiver, target.host, target.port, target.piccap_port, target_capture_interval(&target),
+                     target.receiver, target.host, target.port, target.piccap_port, target_capture_interval(&target), target.black_cutoff,
                      target_flatbuffer(&target) ? "flatbuffer" : "json",
                      calibration_key(calibration.kind), calibration_key(calibration_effective()),
                      calibration.rect_geometry ? "rectangles" : "rim",
@@ -211,7 +212,8 @@ static void mqtt_target_command(const char *key, const char *value) {
         return;
     const char *host = !strcmp(key, "host") ? quoted : NULL;
     const char *receiver = !strcmp(key, "receiver") ? quoted : NULL;
-    bool number = !strcmp(key, "port") || !strcmp(key, "piccapPort") || !strcmp(key, "captureIntervalMs");
+    bool number = !strcmp(key, "port") || !strcmp(key, "piccapPort") || !strcmp(key, "captureIntervalMs") ||
+                  !strcmp(key, "blackCutoff");
     char digits[6];
     if (number) {
         size_t len = strlen(value);
@@ -284,7 +286,7 @@ static void mqtt_on_command(const char *topic, const char *value) {
         if (test_begin(&target, milliseconds()))
             strcpy(result, "{\"returnValue\":true}");
     } else if (!strcmp(key, "host") || !strcmp(key, "receiver") || !strcmp(key, "port") ||
-               !strcmp(key, "piccapPort") || !strcmp(key, "captureIntervalMs") ||
+               !strcmp(key, "piccapPort") || !strcmp(key, "captureIntervalMs") || !strcmp(key, "blackCutoff") ||
                !strcmp(key, "token") || !strcmp(key, "clearToken") || !strcmp(key, "output")) {
         mqtt_target_command(key, value);
     }

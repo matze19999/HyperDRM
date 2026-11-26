@@ -3,6 +3,7 @@
 #include <signal.h>
 #include "histogram.h"
 #include "continuity.h"
+#include "frame_timing.h"
 typedef struct {
     void *handle;
     char diagnostic[256];
@@ -15,6 +16,7 @@ typedef struct {
     uint64_t recovery_started, last_recovery_ms, last_output_at;
     bool color_valid;
     Continuity continuity;
+    SampleTiming sample_timing;
     volatile sig_atomic_t revoked;
 } CaptureContext;
 /* LedBlend is supplied by the layout module (or a portable test fixture). */

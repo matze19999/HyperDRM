@@ -24,7 +24,7 @@ int main(void){
  assert(!target_parse(&j,"{\"host\":\"127.0.0.1\",\"port\":19444,\"piccapPort\":null,\"receiver\":\"HyperHDR\"}",&t));
  TargetConfig v6=t;strcpy(v6.host,"2001:db8::1");assert(!target_piccap_compatible(&v6));strcpy(v6.host,"::1");assert(target_piccap_compatible(&v6) && !strcmp(target_piccap_host(&v6),"127.0.0.1"));
  const char *file="/tmp/hyperdrm-target-test.json";assert(access(file,F_OK)!=0);assert(access("/tmp/hyperdrm-target-test.json.tmp",F_OK)!=0);
- assert(target_capture_interval(&t)==50);
+ assert(target_capture_interval(&t)==50 && t.black_cutoff==DEFAULT_BLACK_CUTOFF);
  assert(target_parse(&j,"{\"host\":\"::1\",\"port\":65535,\"receiver\":\"HyperHDR\",\"captureIntervalMs\":100}",&t));
  assert(t.capture_interval==100);
  const char *invalid_intervals[]={"0","24","26","1001","50.5","null","\"50\""};
@@ -32,8 +32,12 @@ int main(void){
   char request[256];snprintf(request,sizeof(request),"{\"host\":\"::1\",\"port\":65535,\"receiver\":\"HyperHDR\",\"captureIntervalMs\":%s}",invalid_intervals[i]);
   TargetConfig before=t;assert(!target_parse(&j,request,&t));assert(!memcmp(&before,&t,sizeof(t)));
  }
+ assert(target_parse(&j,"{\"host\":\"::1\",\"port\":65535,\"receiver\":\"HyperHDR\",\"blackCutoff\":0}",&t));
+ assert(t.black_cutoff==0);
+ assert(!target_parse(&j,"{\"host\":\"::1\",\"port\":65535,\"receiver\":\"HyperHDR\",\"blackCutoff\":65}",&t));
+ assert(!target_parse(&j,"{\"host\":\"::1\",\"port\":65535,\"receiver\":\"HyperHDR\",\"blackCutoff\":null}",&t));
  assert(target_save(file,&t));struct stat st;assert(stat(file,&st)==0 && (st.st_mode&0777)==0600);
- TargetConfig restored=target;assert(target_load(&j,file,&restored));assert(restored.capture_interval==100);assert(!strcmp(restored.host,"::1") && restored.port==65535 && !strcmp(restored.token,"test-token"));
+ TargetConfig restored=target;assert(target_load(&j,file,&restored));assert(restored.capture_interval==100 && restored.black_cutoff==0);assert(!strcmp(restored.host,"::1") && restored.port==65535 && !strcmp(restored.token,"test-token"));
  /* Output transport: JSON addresses one HyperHDR instance, FlatBuffer reaches all. */
  assert(!strcmp(restored.output,"json") && !target_flatbuffer(&restored));
  assert(target_parse(&j,"{\"host\":\"::1\",\"port\":65535,\"receiver\":\"HyperHDR\",\"output\":\"flatbuffer\"}",&restored));

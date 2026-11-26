@@ -30,7 +30,7 @@ nav{border-bottom:1px solid #456185;padding-bottom:10px;margin-bottom:18px}nav b
 <p><small>Autostart retries until the receiver is available. Auto PicCap uses PicCap for unprotected playback and HyperDRM for protected playback. Keep PicCap's own autostart off.</small></p></fieldset>
 <button id="calibrationShortcut">Auto Calibration</button><small>Measure a spatial profile for your TV.</small>
 <p><small id="endpoint">Priority 149</small></p><div id="regions" aria-label="Histogram colors"></div>
-<p><small>Adjust brightness, saturation and normal smoothing in Hyperion or HyperHDR.</small></p><small id="diagnostics"></small>
+<p><small>Adjust brightness, saturation and normal smoothing in Hyperion or HyperHDR.</small></p><small id="diagnostics"></small><p><small id="captureTiming"></small></p>
 </section>
 <section id="receiverPanel" aria-label="Receiver settings" style="display:none">
 <fieldset><legend>Receiver connection</legend><button id="receiver">Receiver: Hyperion</button><button id="output">Output: JSON</button>
@@ -40,11 +40,12 @@ nav{border-bottom:1px solid #456185;padding-bottom:10px;margin-bottom:18px}nav b
 <div id="portField" class="field narrow" tabindex="0" role="button" aria-label="JSON port, press OK to edit"><label>JSON port<input id="port" tabindex="-1" readonly type="number" min="1" max="65535" value="19444"></label></div>
 <div id="piccapPortField" class="field narrow" tabindex="0" role="button" aria-label="FlatBuffer port, press OK to edit"><label>PicCap FlatBuffer port<input id="piccapPort" tabindex="-1" readonly type="number" min="1" max="65535" value="19400"></label></div>
 <div id="captureIntervalField" class="field narrow" tabindex="0" role="button" aria-label="Capture interval in milliseconds, press OK to edit"><label>Capture interval (ms)<input id="captureInterval" tabindex="-1" readonly type="number" min="25" max="1000" step="25" value="50"></label></div>
+<div id="blackCutoffField" class="field narrow" tabindex="0" role="button" aria-label="Black cutoff, press OK to edit"><label>Black cutoff<input id="blackCutoff" tabindex="-1" readonly type="number" min="0" max="64" step="1" value="16"></label></div>
 <div id="tokenField" class="field" tabindex="0" role="button" aria-label="API token, press OK to edit"><label>API token (optional)<input id="token" tabindex="-1" readonly type="password" maxlength="256" autocomplete="off"></label></div>
 </div>
 <label><input id="clearToken" type="checkbox"> Remove saved token</label>
 <div><button id="saveTarget" class="primary">Save receiver</button><button id="testConnection">Test connection</button></div><p id="testResult" role="status">Connection test: Not tested</p>
-<p><small>The JSON TCP port is usually 19444. Leave the token blank to keep the saved token. Saving updates the current session. Histogram capture defaults to 50 ms; choose 25–1000 ms in steps of 25. Lower values reduce latency and increase TV load. PicCap uses its own capture rate.</small></p>
+<p><small>The JSON TCP port is usually 19444. Leave the token blank to keep the saved token. Saving updates the current session. Histogram capture defaults to 50 ms; choose 25–1000 ms in steps of 25. Lower values reduce latency and increase TV load. PicCap uses its own capture rate. Black cutoff filters dark histogram values. Set it to 0 to turn the filter off.</small></p>
 <p id="piccapTargetHint"><small>Auto PicCap uses the same IP and its FlatBuffer port, usually 19400. Enable the receiver's FlatBuffer server. Remote IPv6 uses HyperDRM.</small></p></fieldset>
 <fieldset><legend>Home Assistant MQTT</legend>
 <button id="mqttEnabled" role="switch" aria-checked="false">MQTT: Off</button>

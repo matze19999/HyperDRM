@@ -169,6 +169,16 @@ static bool settings_request(void *h, void *m, const char *p) {
     if (!target_save(TARGET_PREF, &next))
         return respond(
             h, m, "{\"returnValue\":false,\"errorText\":\"Could not save receiver settings\"}");
+    /* A cutoff-only change can take effect on the next sample without a
+     * receiver reconnect or a gap in LED output. */
+    if (next.black_cutoff != target.black_cutoff && !strcmp(next.host, target.host) &&
+        !strcmp(next.receiver, target.receiver) && !strcmp(next.output, target.output) &&
+        !strcmp(next.token, target.token) && next.port == target.port &&
+        next.piccap_port == target.piccap_port &&
+        target_capture_interval(&next) == target_capture_interval(&target)) {
+        target = next;
+        return respond(h, m, "{\"returnValue\":true}");
+    }
     bool active = capture_ctx.handle || receiver_runtime.starting || piccap_owned || retries.due;
     stop_capture();
     stream_close(milliseconds());

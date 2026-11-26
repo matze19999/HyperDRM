@@ -27,11 +27,24 @@ static void frame_release(OutputFrame *frame) {
     frame->line = NULL;
     frame->plane = NULL;
 }
-static bool frame_send(const OutputFrame *frame, unsigned duration, uint64_t now) {
-    if (target_flatbuffer(&target))
-        return frame->plane && fb_out_frame(&receiver_runtime.flatbuffer, frame->plane,
-                                            SPATIAL_WIDTH, SPATIAL_HEIGHT, (int)duration, now);
-    return frame->line && output_frame(&receiver_runtime.output, frame->line);
+static bool frame_send(const OutputFrame *frame, unsigned duration, uint64_t sampled) {
+    if (target_flatbuffer(&target)) {
+        FlatbufferOutput *output = &receiver_runtime.flatbuffer;
+        if (!frame->plane || !fb_out_frame(output, frame->plane, SPATIAL_WIDTH,
+                                           SPATIAL_HEIGHT, (int)duration, milliseconds()))
+            return false;
+        output->pending_timing = (FrameTiming){.sampled = sampled, .queued = milliseconds()};
+    } else {
+        ReceiverOutput *output = &receiver_runtime.output;
+        if (!frame->line || !output_frame(output, frame->line))
+            return false;
+        output->latest_timing = (FrameTiming){.sampled = sampled, .queued = milliseconds()};
+    }
+    return true;
+}
+static FrameTiming receiver_confirmed_timing(void) {
+    return target_flatbuffer(&target) ? receiver_runtime.flatbuffer.confirmed_timing
+                                      : receiver_runtime.output.confirmed_timing;
 }
 static bool receiver_begin(uint64_t now) {
     if (target_flatbuffer(&target))

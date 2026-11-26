@@ -11,6 +11,8 @@
 #include <unistd.h>
 #include "playback.h"
 #include "atomic_file.h"
+#define DEFAULT_BLACK_CUTOFF 16
+#define MAX_BLACK_CUTOFF 64
 #ifndef TARGET_PREF
 #define TARGET_PREF                                                                                \
     "/media/developer/apps/usr/palm/services/org.webosbrew.histogramhyperion.service/target.json"
@@ -21,11 +23,11 @@
  * Hyperion keeps the JSON colour-array path. */
 typedef struct {
     char host[46], receiver[16], token[257], output[16];
-    unsigned port, piccap_port, capture_interval;
+    unsigned port, piccap_port, capture_interval, black_cutoff;
 } TargetConfig;
 static TargetConfig target = {
     .host = "127.0.0.1", .receiver = "Hyperion", .port = 19444, .piccap_port = 19400,
-    .capture_interval = 50, .output = "json"};
+    .capture_interval = 50, .black_cutoff = DEFAULT_BLACK_CUTOFF, .output = "json"};
 static inline bool target_flatbuffer(const TargetConfig *t) {
     return !strcmp(t->receiver, "HyperHDR") && !strcmp(t->output, "flatbuffer");
 }
@@ -45,7 +47,7 @@ static inline const char *target_piccap_host(const TargetConfig *t) {
 static bool target_valid(const TargetConfig *t) {
     unsigned char address[16];
     unsigned interval = target_capture_interval(t);
-    if (interval < 25 || interval > 1000 || interval % 25)
+    if (interval < 25 || interval > 1000 || interval % 25 || t->black_cutoff > MAX_BLACK_CUTOFF)
         return false;
     if (inet_pton(AF_INET, t->host, address) != 1 && inet_pton(AF_INET6, t->host, address) != 1)
         return false;
@@ -129,6 +131,14 @@ static bool target_parse(PlaybackJson *j, const char *text, TargetConfig *out) {
                 next.capture_interval = (unsigned)n;
         }
     }
+    void *black = NULL;
+    if (j->type(root) == 4 && j->get(root, "blackCutoff", &black)) {
+        long cutoff = black && j->type(black) == 3 ? strtol(j->string(black), NULL, 10) : -1;
+        if (cutoff < 0 || cutoff > MAX_BLACK_CUTOFF)
+            valid = false;
+        else
+            next.black_cutoff = (unsigned)cutoff;
+    }
     void *output = NULL;
     if (j->type(root) == 4 && j->get(root, "output", &output)) {
         if (!output || j->type(output) != 6)
@@ -161,9 +171,9 @@ static bool target_save(const char *path, const TargetConfig *t) {
     int n = snprintf(
         data, sizeof(data),
         "{\"host\":\"%s\",\"port\":%u,\"piccapPort\":%u,\"receiver\":\"%s\","
-        "\"output\":\"%s\",\"token\":\"%s\",\"captureIntervalMs\":%u}\n",
+        "\"output\":\"%s\",\"token\":\"%s\",\"captureIntervalMs\":%u,\"blackCutoff\":%u}\n",
         t->host, t->port, t->piccap_port, t->receiver, t->output[0] ? t->output : "json", t->token,
-        target_capture_interval(t));
+        target_capture_interval(t), t->black_cutoff);
     return n > 0 && (size_t)n < sizeof(data) &&
            atomic_replace(path, data, (size_t)n) != SAVE_UNCHANGED;
 }

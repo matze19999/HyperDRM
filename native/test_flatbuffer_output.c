@@ -185,11 +185,16 @@ static void run_fixture(PlaybackJson *json, int mode) {
         if (output.stage == FB_READY && !sent) {
             sent = true;
             assert(fb_out_frame(&output, plane, WIDTH, HEIGHT, 1500, now));
+            output.pending_timing = (FrameTiming){.sampled = 900, .queued = 901};
             plane[0] = 0x42; /* replaces the queued frame before it was sent */
             assert(fb_out_frame(&output, plane, WIDTH, HEIGHT, 1500, now));
+            output.pending_timing = (FrameTiming){.sampled = 940, .queued = 941};
             fb_out_tick(&output, now);
         }
         if (mode == 0 && output.frames >= 1 && !stopped) {
+            assert(output.confirmed_timing.sampled == 940 && output.confirmed_timing.queued == 941);
+            assert(output.confirmed_timing.sent >= 941 &&
+                   output.confirmed_timing.confirmed >= output.confirmed_timing.sent);
             stopped = true;
             fb_out_stop(&output, now, true);
         }
