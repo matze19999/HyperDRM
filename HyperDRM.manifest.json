@@ -4,10 +4,10 @@
   "type": "web",
   "title": "HyperDRM",
   "appDescription": "Ambient lighting for webOS, Hyperion and HyperHDR",
-  "iconUri": "https://github.com/matze19999/HyperDRM/raw/refs/heads/main/app/icon.png",
+  "iconUri": "https://raw.githubusercontent.com/matze19999/HyperDRM/main/app/icon.png",
   "sourceUrl": "https://github.com/matze19999/HyperDRM",
   "rootRequired": true,
-  "ipkUrl": "https://github.com/matze19999/HyperDRM/raw/refs/heads/main/HyperDRM_0.15.4_arm.ipk",
+  "ipkUrl": "https://raw.githubusercontent.com/matze19999/HyperDRM/v0.15.4/HyperDRM_0.15.4_arm.ipk",
   "ipkHash": {
     "sha256": "0da98d5af920cf7b59576d5bc6a9bd04c75cb7d0b45c5c95e4f4020478f7f6f8"
   },

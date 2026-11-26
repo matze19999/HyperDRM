@@ -44,6 +44,8 @@ Only the own service is modified. Optional Auto PicCap can configure its receive
 
 ## Installation
 
+To browse and install HyperDRM from **Homebrew Channel**, open **Settings → Add repository** and enter the [raw repository URL](https://raw.githubusercontent.com/matze19999/HyperDRM/main/repo.json). Then return to the catalog and select **HyperDRM**. The TV needs root access and a compatible LG histogram implementation.
+
 The current package is [HyperDRM_0.15.4_arm.ipk](HyperDRM_0.15.4_arm.ipk). Install it using the TV's webOS/Homebrew package installation workflow.
 
 Elevate the installed own service through Homebrew Channel:

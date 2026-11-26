@@ -1,0 +1,19 @@
+{
+  "paging": {
+    "page": 1,
+    "count": 1,
+    "maxPage": 1,
+    "itemsTotal": 1,
+    "prevUrl": null,
+    "nextUrl": null
+  },
+  "packages": [
+    {
+      "id": "org.webosbrew.histogramhyperion",
+      "title": "HyperDRM",
+      "iconUri": "https://raw.githubusercontent.com/matze19999/HyperDRM/main/app/icon.png",
+      "manifestUrl": "https://raw.githubusercontent.com/matze19999/HyperDRM/main/HyperDRM.manifest.json",
+      "shortDescription": "Ambient lighting for rooted LG webOS TVs with Hyperion or HyperHDR."
+    }
+  ]
+}
