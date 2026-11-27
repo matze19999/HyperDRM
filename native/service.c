@@ -30,6 +30,7 @@
 #include "diagnostics.h"
 #include "continuity.h"
 #include "service_context.h"
+#include "connection_check.h"
 #define SERVICE "org.webosbrew.histogramhyperion.service"
 #define PRIORITY 149
 typedef struct {
@@ -324,6 +325,7 @@ int main(void) {
     mqtt_close(milliseconds(), NULL);
     stream_close(milliseconds());
     test_close();
+    display_reset();
     stop_capture();
     receiver_close();
     fb_out_release(&receiver_runtime.flatbuffer);

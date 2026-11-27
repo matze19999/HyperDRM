@@ -186,7 +186,7 @@ static bool settings_request(void *h, void *m, const char *p) {
     bridge_phase = BRIDGE_IDLE;
     memset(&capture_ctx.continuity, 0, sizeof(capture_ctx.continuity));
     test_close();
-    connection_test.stage = TEST_IDLE;
+    display_reset();
     target = next;
     last_error[0] = 0;
     protection = PLAYBACK_UNKNOWN;

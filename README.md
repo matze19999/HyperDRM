@@ -46,7 +46,7 @@ Only the own service is modified. Optional Auto PicCap can configure its receive
 
 To browse and install HyperDRM from **Homebrew Channel**, open **Settings → Add repository** and enter the [raw repository URL](https://raw.githubusercontent.com/matze19999/HyperDRM/main/repo.json). Then return to the catalog and select **HyperDRM**. The TV needs root access and a compatible LG histogram implementation.
 
-The current package is [HyperDRM_0.15.7_arm.ipk](HyperDRM_0.15.7_arm.ipk). Install it using the TV's webOS/Homebrew package installation workflow.
+The current package is [HyperDRM_0.15.8_arm.ipk](HyperDRM_0.15.8_arm.ipk). Install it using the TV's webOS/Homebrew package installation workflow.
 
 Elevate the installed own service through Homebrew Channel:
 
@@ -177,7 +177,7 @@ priority; per-instance LED output still needs verification on the TV.
 
 ## Diagnostics and connection test (0.9.0)
 
-Save the receiver settings, then select **Test connection**. The test opens a separate nonblocking JSON connection, logs in with the saved token when present, and requests and validates the LED layout. It sends no colors, clears no priorities and acquires no TV capture. Results include success/failure, validated LED count, elapsed time and an actionable error. A successful test verifies connectivity and layout access, not the physical LEDs or FlatBuffer input.
+Save the receiver settings, then select **Test connection**. The test opens a separate nonblocking JSON connection, logs in with the saved token when present, and validates the LED layout. With **FlatBuffer** selected, it also opens the configured FlatBuffer port and waits for the receiver to confirm registration. HyperHDR can clear the connection's priority on disconnect, so the test checks every running instance before using a temporary priority. It requires the server's initial priority 140 and at least one of 235–249 to be unused. No test frames are sent. The result shows the tested transport, LED count, elapsed time and any error.
 
 The diagnostic line reports service version/root status, capture transition, playback classification, capture recovery count/time, age of the last histogram output and scheduled retry timing. PicCap reports its own connection status; histogram output age is not PicCap frame age. Color calibration, saturation, brightness and smoothing belong in Hyperion/HyperHDR; HyperDRM keeps neutral gains.
 
@@ -321,6 +321,16 @@ connection fails, HyperDRM can take over while PicCap is retried. **Sending
 source** reports recent acknowledged histogram output, a connected PicCap
 managed by HyperDRM, or **None**. It describes this app's output and may differ
 from the receiver's displayed priority if another app overrides it.
+
+For a HyperHDR receiver, **Displayed source** reports the input selected by
+HyperHDR and shows **Mixed** when running instances use different sources.
+The sensor's `instances` attribute lists each LED instance by ID and name,
+with its source, visible priority and, for other sources, the receiver's origin
+label. An instance can report **HyperDRM**, **PicCap**, **Other**, **None** or
+**Stopped**. The service refreshes this data about every five seconds while
+MQTT is connected. The sensor reports **Unknown** if it cannot read the
+receiver and **Not supported** for Hyperion. The same data is available as
+`displayedSource` and `displayedInstances` in the retained MQTT state.
 
 The app shows the base topic `hyperdrm/hdr-<id>`. Home Assistant discovers
 lighting, autostart, handover, source, receiver settings, capture interval,

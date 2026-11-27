@@ -36,6 +36,9 @@ static void check_publications(int broker) {
         if (!strncmp(topic, "homeassistant/", 14)) {
             void *json = playback_parse_exact(&playback_json, body);
             assert(flags == 0x31 && json && playback_field(&playback_json, json, "unique_id"));
+            if (strstr(topic, "/displayedSource/"))
+                assert(playback_field(&playback_json, json, "json_attributes_topic") &&
+                       strstr(body, "value_json.displayedInstances"));
             playback_json.put(json);
             discovery++;
         } else if (strstr(topic, "/state")) {
@@ -101,6 +104,30 @@ int main(void) {
     check_publications(sockets[1]);
     assert(discovery == sizeof(mqtt_entities) / sizeof(*mqtt_entities) && states == 1);
     assert(strstr(state_json, "\"activeSource\":\"None\""));
+    assert(strstr(state_json, "\"displayedSource\":\"Not supported\""));
+    TargetConfig default_target = target;
+    strcpy(target.receiver, "HyperHDR");
+    char visible[2048];
+    assert(mqtt_displayed_sources(visible, sizeof(visible)) > 0);
+    assert(strstr(visible, "\"displayedSource\":\"Unknown\""));
+    display_snapshot.rows[0] = (DisplayInstance){.id = 0, .source = DISPLAY_HYPERDRM,
+                                                .priority = 149, .name = "TV"};
+    display_snapshot.rows[1] = (DisplayInstance){.id = 3, .source = DISPLAY_OTHER,
+                                                .priority = 60, .name = "Desk \"back\"", .origin = "Effect"};
+    display_snapshot.count = 2;
+    display_known = true;
+    char json_visible[2050];
+    assert(mqtt_displayed_sources(json_visible + 1, sizeof(json_visible) - 1) > 0);
+    json_visible[0] = '{';
+    void *visible_root = playback_parse_exact(&playback_json, json_visible);
+    assert(playback_is(&playback_json, visible_root, "displayedSource", "Mixed"));
+    void *instances = playback_field(&playback_json, visible_root, "displayedInstances");
+    assert(instances && playback_json.length(instances) == 2);
+    assert(playback_is(&playback_json, playback_json.at(instances, 1), "name", "Desk \"back\""));
+    assert(playback_is(&playback_json, playback_json.at(instances, 1), "origin", "Effect"));
+    playback_json.put(visible_root);
+    display_reset();
+    target = default_target;
 
     send_interval(sockets[1], 0x31, "100");
     mqtt_service_tick(now + 125);

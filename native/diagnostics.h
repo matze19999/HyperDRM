@@ -1,5 +1,6 @@
 #ifndef HYPERDRM_DIAGNOSTICS_H
 #define HYPERDRM_DIAGNOSTICS_H
+#include "receiver_instances.h"
 /* An independent nonblocking connection. Tests never send colors or acquire
  * capture. Work per timer iteration is bounded to keep output responsive. */
 typedef enum {
@@ -8,6 +9,9 @@ typedef enum {
     TEST_SEND,
     TEST_LOGIN,
     TEST_LAYOUT,
+    TEST_INSTANCES,
+    TEST_SWITCH,
+    TEST_FLATBUFFER,
     TEST_DONE,
     TEST_FAILED
 } TestStage;
@@ -21,16 +25,18 @@ typedef struct {
     size_t sent, used;
     char *response;
     LedBlend *mapping;
+    ReceiverInstances *view;
+    bool listed, require_layout;
 } ReceiverProbe;
-static ReceiverProbe connection_test = {.fd = -1};
-static const char *probe_stage_name(const ReceiverProbe *probe) {
+static inline const char *probe_stage_name(const ReceiverProbe *probe) {
     static const char *names[] = {
         "Not tested",         "Connecting", "Sending request", "Checking authentication",
-        "Reading LED layout", "Passed",     "Failed"};
+        "Reading LED layout", "Reading receiver instances", "Checking receiver instance",
+        "Testing FlatBuffer", "Passed", "Failed"};
     return names[probe->stage];
 }
 static bool probe_busy(const ReceiverProbe *probe) {
-    return probe->stage >= TEST_CONNECT && probe->stage <= TEST_LAYOUT;
+    return probe->stage >= TEST_CONNECT && probe->stage <= TEST_SWITCH;
 }
 static void probe_close(ReceiverProbe *probe) {
     if (probe->fd >= 0)
@@ -49,25 +55,34 @@ static void probe_finish(ReceiverProbe *probe, const char *error, uint64_t now) 
     probe->stage = error ? TEST_FAILED : TEST_DONE;
     snprintf(probe->error, sizeof(probe->error), "%s", error ? error : "");
 }
-static void probe_request(ReceiverProbe *probe, bool login, uint64_t now) {
-    if (login)
+static void probe_request(ReceiverProbe *probe, TestStage response, uint64_t now) {
+    if (response == TEST_LOGIN)
         snprintf(probe->request, sizeof(probe->request),
                  "{\"command\":\"authorize\",\"subcommand\":\"login\",\"token\":\"%s\"}\n",
                  probe->target.token);
+    else if (response == TEST_SWITCH)
+        snprintf(probe->request, sizeof(probe->request),
+                 "{\"command\":\"instance\",\"subcommand\":\"switchTo\",\"instance\":%u}\n",
+                 probe->view->rows[probe->view->index].id);
     else
         snprintf(probe->request, sizeof(probe->request), "{\"command\":\"serverinfo\"}\n");
     probe->sent = probe->used = 0;
-    probe->after_send = login ? TEST_LOGIN : TEST_LAYOUT;
+    probe->after_send = response;
     probe->stage = TEST_SEND;
     probe->deadline = now + 3000;
 }
-static bool probe_begin(ReceiverProbe *probe, const TargetConfig *target, uint64_t now) {
+static bool probe_begin_view(ReceiverProbe *probe, const TargetConfig *target, uint64_t now,
+                             ReceiverInstances *view, bool require_layout) {
     if (probe_busy(probe))
         return false;
     probe_close(probe);
     memset(probe, 0, sizeof(*probe));
     probe->fd = -1;
     probe->target = *target;
+    probe->view = view;
+    probe->require_layout = require_layout;
+    if (view)
+        memset(view, 0, sizeof(*view));
     probe->started = now;
     probe->response = malloc(2 * 1024 * 1024 + 1);
     if (!probe->response) {
@@ -83,10 +98,68 @@ static bool probe_begin(ReceiverProbe *probe, const TargetConfig *target, uint64
     probe->deadline = now + 3000;
     return true;
 }
+static inline bool probe_begin(ReceiverProbe *probe, const TargetConfig *target, uint64_t now) {
+    return probe_begin_view(probe, target, now, NULL, true);
+}
+
+static void probe_instances_reply(ReceiverProbe *probe, PlaybackJson *j, void *root, uint64_t now) {
+    ReceiverInstances *view = probe->view;
+    if (probe->stage == TEST_SWITCH) {
+        if (playback_is(j, root, "command", "instance-switchTo"))
+            probe_request(probe, TEST_INSTANCES, now);
+        else
+            probe_finish(probe, "Receiver did not confirm the instance switch", now);
+        return;
+    }
+    if (!playback_is(j, root, "command", "serverinfo")) {
+        probe_finish(probe, "Receiver did not confirm serverinfo", now);
+        return;
+    }
+    void *info = playback_field(j, root, "info");
+    int current = receiver_byte(j, info, "currentInstance");
+    if (!probe->listed) {
+        if (!receiver_instances_read(view, j, info)) {
+            probe_finish(probe, "Invalid receiver instance list or more than 16 instances", now);
+            return;
+        }
+        if (probe->require_layout) {
+            LedBlend *mapping = NULL;
+            bool valid = layout_from_json(probe->response, &mapping, &probe->leds);
+            free(mapping);
+            if (!valid) {
+                probe_finish(probe, "Receiver returned an invalid or empty LED layout", now);
+                return;
+            }
+        }
+        for (unsigned i = 0; i < view->count; i++) {
+            DisplayInstance *instance = &view->rows[i];
+            if ((int)instance->id == current && instance->source == DISPLAY_UNKNOWN &&
+                !receiver_priorities_read(view, instance, j, info)) {
+                probe_finish(probe, "Receiver returned invalid instance priorities", now);
+                return;
+            }
+        }
+        probe->listed = true;
+    } else {
+        DisplayInstance *instance = &view->rows[view->index];
+        if ((current >= 0 && (unsigned)current != instance->id) ||
+            !receiver_priorities_read(view, instance, j, info)) {
+            probe_finish(probe, "Receiver returned invalid instance priorities", now);
+            return;
+        }
+    }
+    while (view->index < view->count && view->rows[view->index].source != DISPLAY_UNKNOWN)
+        view->index++;
+    if (view->index == view->count)
+        probe_finish(probe, NULL, now);
+    else
+        probe_request(probe, TEST_SWITCH, now);
+}
+
 static void probe_tick(ReceiverProbe *probe, PlaybackJson *json, uint64_t now) {
     if (!probe_busy(probe))
         return;
-    if (now >= probe->deadline) {
+    if (now >= probe->deadline || now - probe->started >= 8000) {
         probe_finish(probe, "Receiver timed out", now);
         return;
     }
@@ -101,7 +174,8 @@ static void probe_tick(ReceiverProbe *probe, PlaybackJson *json, uint64_t now) {
             probe_finish(probe, "Receiver connection refused or unreachable", now);
             return;
         }
-        probe_request(probe, probe->target.token[0] != 0, now);
+        probe_request(probe, probe->target.token[0] ? TEST_LOGIN :
+                      probe->view ? TEST_INSTANCES : TEST_LAYOUT, now);
         return;
     }
     if (probe->stage == TEST_SEND) {
@@ -147,20 +221,28 @@ static void probe_tick(ReceiverProbe *probe, PlaybackJson *json, uint64_t now) {
     *end = 0;
     void *root = playback_parse_exact(json, probe->response);
     bool success = playback_true(json, root, "success");
-    if (root)
-        json->put(root);
     if (!success) {
+        if (root)
+            json->put(root);
         probe_finish(probe,
                      probe->stage == TEST_LOGIN
                          ? "Receiver authentication failed"
+                         : probe->stage == TEST_SWITCH ? "Receiver refused the instance switch"
                          : "Receiver rejected serverinfo; check authorization",
                      now);
         return;
     }
     if (probe->stage == TEST_LOGIN) {
-        probe_request(probe, false, now);
+        json->put(root);
+        probe_request(probe, probe->view ? TEST_INSTANCES : TEST_LAYOUT, now);
         return;
     }
+    if (probe->view) {
+        probe_instances_reply(probe, json, root, now);
+        json->put(root);
+        return;
+    }
+    json->put(root);
     LedBlend *mapping = NULL;
     unsigned count = 0;
     if (!layout_from_json(probe->response, &mapping, &count)) {
@@ -170,20 +252,5 @@ static void probe_tick(ReceiverProbe *probe, PlaybackJson *json, uint64_t now) {
     probe->leds = count;
     probe_finish(probe, NULL, now);
     probe->mapping = mapping;
-}
-static inline const char *test_stage_name(void) {
-    return probe_stage_name(&connection_test);
-}
-static inline bool test_busy(void) {
-    return probe_busy(&connection_test);
-}
-static inline void test_close(void) {
-    probe_close(&connection_test);
-}
-static inline bool test_begin(const TargetConfig *target, uint64_t now) {
-    return probe_begin(&connection_test, target, now);
-}
-static inline void test_tick(PlaybackJson *json, uint64_t now) {
-    probe_tick(&connection_test, json, now);
 }
 #endif

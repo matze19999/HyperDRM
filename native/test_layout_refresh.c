@@ -30,6 +30,6 @@ int main(void){
  layout_refresh_tick(&json,6000,true,&receiver_layout);assert(receiver_layout.count==500 && receiver_layout.blends==previous);assert(probe_busy(&layout_probe));
  layout_refresh_tick(&json,6100,false,&receiver_layout);assert(!probe_busy(&layout_probe) && layout_probe.fd==-1);
  assert(receiver_layout.count==500 && receiver_layout.blends==previous);
- layout_refresh_reset(7000);free(receiver_layout.blends);test_close();
+ layout_refresh_reset(7000);free(receiver_layout.blends);
  puts("PASS: automatic 50/500 LED replacement, same-count position changes, unchanged layout, invalid reply retention, obsolete profile result and cancellation");return 0;
 }

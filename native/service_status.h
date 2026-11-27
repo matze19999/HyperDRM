@@ -1,7 +1,7 @@
 /* Read-only runtime status serialization. */
 static bool status(void *h, void *m, void *ctx) {
     (void)ctx;
-    char json[12288], safe[512], endpoint[80];
+    char json[12288], safe[512], endpoint[80], test_error[256];
     size_t n = 0;
     snprintf(endpoint, sizeof(endpoint), strchr(target.host, ':') ? "[%s]:%u" : "%s:%u",
              target.host, target.port);
@@ -13,6 +13,15 @@ static bool status(void *h, void *m, void *ctx) {
             safe[n++] = c;
     }
     safe[n] = 0;
+    size_t error_used = 0;
+    for (const unsigned char *p = (const unsigned char *)connection_test.error; *p; p++) {
+        if (*p < 32)
+            continue;
+        if (*p == '"' || *p == '\\')
+            test_error[error_used++] = '\\';
+        test_error[error_used++] = (char)*p;
+    }
+    test_error[error_used] = 0;
     uint64_t now = milliseconds();
     FrameTiming frame = receiver_confirmed_timing();
     bool fresh_timing = capture_ctx.handle && capture_ctx.color_valid && frame.sampled &&
@@ -92,10 +101,11 @@ static bool status(void *h, void *m, void *ctx) {
     used +=
         snprintf(json + used, sizeof(json) - used,
                  "\"returnValue\":true,\"captureIntervalMs\":%u,\"piccapPort\":%u,\"connectionTest\":{\"state\":\"%s\","
-                 "\"ledCount\":%u,\"elapsedMs\":%llu,\"error\":\"%s\"},\"lastOutputAgeMs\":%"
+                 "\"busy\":%s,\"transport\":\"%s\",\"ledCount\":%u,\"elapsedMs\":%llu,\"error\":\"%s\"},\"lastOutputAgeMs\":%"
                  "lld,\"retryInMs\":%llu,\"captureState\":\"%s\",\"piccapError\":\"%s\",",
-                 target_capture_interval(&target), target.piccap_port, test_stage_name(), connection_test.leds,
-                 (unsigned long long)connection_test.elapsed, connection_test.error,
+                 target_capture_interval(&target), target.piccap_port, test_stage_name(), test_busy() ? "true" : "false",
+                 target_flatbuffer(&target) ? "FlatBuffer" : "JSON", connection_test.leds,
+                 (unsigned long long)connection_test.elapsed, test_error,
                  capture_ctx.last_output_at ? (long long)(now - capture_ctx.last_output_at) : -1,
                  (unsigned long long)(retries.due > now ? retries.due - now : 0),
                  capture_source == SOURCE_PICCAP_STARTING   ? "Starting PicCap"

@@ -3,6 +3,11 @@ var pending = [];
 var actionError = '';
 var versionCompatible = typeof HYPERDRM_APP_VERSION === 'undefined';
 
+function connectionTestBusy(test) {
+    return !!test && (typeof test.busy === 'boolean' ? test.busy :
+        ['Connecting', 'Sending request', 'Checking authentication', 'Reading LED layout'].indexOf(test.state) >= 0);
+}
+
 function checkServiceVersion(result) {
     if (typeof HYPERDRM_APP_VERSION === 'undefined' || result.returnValue === false) return;
     versionCompatible = result.version === HYPERDRM_APP_VERSION;
@@ -17,7 +22,7 @@ function checkServiceVersion(result) {
             button.disabled = true;
         } else if (button.versionBlocked) {
             button.versionBlocked = false;
-            button.disabled = id === 'handover' ? !result.piccapInstalled : id === 'testConnection' && result.connectionTest && ['Connecting', 'Sending request', 'Checking authentication', 'Reading LED layout'].indexOf(result.connectionTest.state) >= 0;
+            button.disabled = id === 'handover' ? !result.piccapInstalled : id === 'testConnection' && connectionTestBusy(result.connectionTest);
         }
     });
 }
@@ -161,8 +166,8 @@ function display(result) {
             : cadence;
     }
     var t = result.connectionTest;
-    if (t) document.getElementById('testResult').textContent = 'Connection test: ' + t.state + (t.state === 'Passed' ? ' · ' + t.ledCount + ' LEDs · ' + t.elapsedMs + ' ms' : '') + (t.error ? ' · ' + t.error : '');
-    document.getElementById('testConnection').disabled = !!t && ['Connecting', 'Sending request', 'Checking authentication', 'Reading LED layout'].indexOf(t.state) >= 0;
+    if (t) document.getElementById('testResult').textContent = 'Connection test' + (t.transport ? ' (' + t.transport + ')' : '') + ': ' + t.state + (t.state === 'Passed' ? ' · ' + t.ledCount + ' LEDs · ' + t.elapsedMs + ' ms' : '') + (t.error ? ' · ' + t.error : '');
+    document.getElementById('testConnection').disabled = connectionTestBusy(t);
     if (result.version) document.getElementById('diagnostics').textContent = 'Version ' + result.version + ' · ' + (result.uid === 0 ? 'Root service' : 'Service needs root elevation') + ' · ' + result.captureState + ' · Playback: ' + result.playbackProtection + ' · Capture recoveries: ' + result.captureRecoveries + ' (last: ' + result.lastRecoveryMs + ' ms)' + (result.lastOutputAgeMs >= 0 ? ' · Last histogram output: ' + result.lastOutputAgeMs + ' ms ago' : '') + (result.retryScheduled ? ' · Retry in ' + result.retryInMs + ' ms · Attempts: ' + result.retryAttempts : '') + (result.piccapError ? ' · ' + result.piccapError : '') + (result.piccapCooldownMs ? ' · PicCap retry in ' + Math.ceil(result.piccapCooldownMs / 1000) + ' s' : '') + ' · Layout updates: ' + (result.layoutUpdates || 0) + (result.layoutError ? ' · Layout: ' + result.layoutError : '');
     var handover = document.getElementById('handover');
     handover.disabled = !result.piccapInstalled;
