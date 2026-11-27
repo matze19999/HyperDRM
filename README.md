@@ -46,7 +46,7 @@ Only the own service is modified. Optional Auto PicCap can configure its receive
 
 To browse and install HyperDRM from **Homebrew Channel**, open **Settings → Add repository** and enter the [raw repository URL](https://raw.githubusercontent.com/matze19999/HyperDRM/main/repo.json). Then return to the catalog and select **HyperDRM**. The TV needs root access and a compatible LG histogram implementation.
 
-The current package is [HyperDRM_0.15.8_arm.ipk](HyperDRM_0.15.8_arm.ipk). Install it using the TV's webOS/Homebrew package installation workflow.
+The current package is [HyperDRM_0.15.9_arm.ipk](HyperDRM_0.15.9_arm.ipk). Install it using the TV's webOS/Homebrew package installation workflow.
 
 Elevate the installed own service through Homebrew Channel:
 
@@ -67,6 +67,20 @@ The app's **Autostart: On/Off** switch controls the own hook `/var/lib/webosbrew
 **Stop** ends the current capture session and pauses retries until **Start** or the next service launch/boot; it leaves the saved autostart preference unchanged. The hook is a symlink to `boot.sh` inside the service container. Removal leaves a harmless dangling link; the script also exits when its service target is absent. Turning autostart off removes the own hook and cancels waiting boot attempts. A foreign file or symlink at that path will not be overwritten.
 
 Boot log: `/var/lib/webosbrew/histogramhyperion-boot.log`.
+
+## Recent input preview
+
+On supported LG TVs, the elevated background service enables the recent input
+preview on the webOS Home screen and disables it while an app or HDMI input is
+in the foreground. This avoids periodic thumbnail captures during viewing and
+works with either HyperDRM or PicCap as the lighting source. The service checks
+the foreground app about once a second and uses a runtime override. Enable
+Autostart to apply the policy from boot.
+
+The app diagnostics and the Home Assistant **Recent input preview** sensor show
+the last acknowledged state as **Enabled**, **Disabled**, or **Unknown**.
+If webOS cannot identify the foreground app, the service waits for a valid
+response before changing the preview.
 
 ## Build
 

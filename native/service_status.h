@@ -102,7 +102,7 @@ static bool status(void *h, void *m, void *ctx) {
         snprintf(json + used, sizeof(json) - used,
                  "\"returnValue\":true,\"captureIntervalMs\":%u,\"piccapPort\":%u,\"connectionTest\":{\"state\":\"%s\","
                  "\"busy\":%s,\"transport\":\"%s\",\"ledCount\":%u,\"elapsedMs\":%llu,\"error\":\"%s\"},\"lastOutputAgeMs\":%"
-                 "lld,\"retryInMs\":%llu,\"captureState\":\"%s\",\"piccapError\":\"%s\",",
+                 "lld,\"retryInMs\":%llu,\"captureState\":\"%s\",\"inputPreview\":\"%s\",\"piccapError\":\"%s\",",
                  target_capture_interval(&target), target.piccap_port, test_stage_name(), test_busy() ? "true" : "false",
                  target_flatbuffer(&target) ? "FlatBuffer" : "JSON", connection_test.leds,
                  (unsigned long long)connection_test.elapsed, test_error,
@@ -113,7 +113,7 @@ static bool status(void *h, void *m, void *ctx) {
                  : piccap_owned                             ? "PicCap"
                  : capture_ctx.handle                       ? "Histogram"
                                                             : "Stopped",
-                 piccap_error);
+                 input_preview_status(), piccap_error);
     used += snprintf(
         json + used, sizeof(json) - used,
         "\"version\":\"" HYPERDRM_VERSION

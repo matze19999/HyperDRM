@@ -202,6 +202,7 @@ static bool respond(void *h, void *m, const char *s) {
     return ok;
 }
 #include "handover.h"
+#include "input_preview.h"
 #include "layout_refresh.h"
 #define RECEIVER_LAYOUT_REVISION layout_updates
 #include "receiver_stream.h"
@@ -314,6 +315,7 @@ int main(void) {
         return 3;
     }
     service_handle = handle;
+    input_preview.enabled = geteuid() == 0 && playback_json.lib;
     if (!boot_enabled())
         retry_pause(&retries);
     ServiceTimer scheduler = {.add_timeout = timer, .period = 25};
@@ -322,6 +324,7 @@ int main(void) {
         iterate(NULL, 1);
     if (scheduler.id)
         remove_source(scheduler.id);
+    input_preview_cancel();
     mqtt_close(milliseconds(), NULL);
     stream_close(milliseconds());
     test_close();

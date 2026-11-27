@@ -45,6 +45,7 @@ static int tick(void *unused) {
             retry_failure(&retries, now);
     }
     model_tick(now);
+    input_preview_tick(now);
     test_tick(&playback_json, now);
     display_tick(&playback_json, now, mqtt.stage == MQTT_READY);
     layout_refresh_tick(&playback_json, now, capture_ctx.handle || capture_source == SOURCE_PICCAP,

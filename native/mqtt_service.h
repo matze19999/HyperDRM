@@ -103,6 +103,7 @@ static const struct MqttEntity {
 } mqtt_entities[] = {
     {"sensor", "activeSource", "Sending source", NULL, false},
     {"sensor", "displayedSource", "Displayed source", NULL, false},
+    {"sensor", "inputPreview", "Recent input preview", NULL, false},
     {"sensor", "receiverState", "Receiver connection", NULL, false},
     {"sensor", "connectionTest", "Connection test", NULL, false},
     {"sensor", "error", "Last error", NULL, false},
@@ -175,7 +176,7 @@ static bool mqtt_publish_state(uint64_t now) {
     int n = snprintf(json, sizeof(json),
                      "{\"activeSource\":\"%s\",\"sourceMode\":\"%s\",\"receiverState\":\"%s\","
                      "\"error\":%s,\"connectionTest\":\"%s\",\"connectionTestError\":%s,\"letterbox\":\"%s\","
-                     "\"running\":\"%s\",\"autostart\":\"%s\",\"piccapHandover\":\"%s\","
+                     "\"running\":\"%s\",\"autostart\":\"%s\",\"piccapHandover\":\"%s\",\"inputPreview\":\"%s\","
                      "\"receiver\":\"%s\",\"host\":\"%s\",\"port\":%u,\"piccapPort\":%u,"
                      "\"captureIntervalMs\":%u,\"blackCutoff\":%u,\"output\":\"%s\",\"profile\":\"%s\",\"effectiveProfile\":\"%s\",\"geometry\":\"%s\","
                      "\"piccapInstalled\":%s,\"piccapConnected\":%s,\"tokenSet\":%s,\"mqtt\":{"
@@ -186,7 +187,7 @@ static bool mqtt_publish_state(uint64_t now) {
                      sending || !strcmp(source, "PicCap") ? "Connected" : retries.due ? "Retrying" : "Idle",
                      error, test_stage_name(), test_error, capture_ctx.handle && capture_ctx.letterbox_mode ? "ON" : "OFF",
                      !retries.paused && (capture_ctx.handle || receiver_runtime.starting || piccap_owned || retries.due) ? "ON" : "OFF",
-                     boot_enabled() ? "ON" : "OFF", handover_enabled ? "ON" : "OFF",
+                     boot_enabled() ? "ON" : "OFF", handover_enabled ? "ON" : "OFF", input_preview_status(),
                      target.receiver, target.host, target.port, target.piccap_port, target_capture_interval(&target), target.black_cutoff,
                      target_flatbuffer(&target) ? "flatbuffer" : "json",
                      calibration_key(calibration.kind), calibration_key(calibration_effective()),
