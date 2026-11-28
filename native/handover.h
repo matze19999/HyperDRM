@@ -225,7 +225,7 @@ static void select_manual_source(unsigned selection, bool histogram_running, boo
         retry_source_transition(&retries, now);
 }
 /* Return true while PicCap owns capture or a stop confirmation is pending. */
-static bool handover_tick(void) {
+static bool handover_tick(bool allow_capture) {
     uint64_t now = milliseconds();
     if (media_busy && now >= media_deadline) {
         LSError e;
@@ -251,7 +251,7 @@ static bool handover_tick(void) {
         capture_source = SOURCE_PICCAP_STOPPING;
         next_piccap_probe = 0;
     }
-    if (handover_enabled && piccap_installed() && !retries.paused && playback_json.lib &&
+    if (allow_capture && handover_enabled && piccap_installed() && !retries.paused && playback_json.lib &&
         !media_busy && now >= next_media_probe) {
         LSError e;
         error_init(&e);
@@ -269,7 +269,7 @@ static bool handover_tick(void) {
             unknown_since = now;
     }
     bool forced = requested_source == MODE_PICCAP;
-    bool session = !CALIBRATION_ACTIVE && (forced || (requested_source == MODE_AUTO && handover_enabled)) && target_piccap_compatible(&target) &&
+    bool session = allow_capture && !CALIBRATION_ACTIVE && (forced || (requested_source == MODE_AUTO && handover_enabled)) && target_piccap_compatible(&target) &&
                    piccap_installed() && !retries.paused && !retries.blocked;
     bool clear = session && (forced || (protection == PLAYBACK_CLEAR && now - protection_at < 3000));
     bool stable = clear && (forced || (clear_samples >= 3 && now - clear_since >= CLEAR_STABLE_MS)) &&

@@ -46,9 +46,10 @@ static bool status(void *h, void *m, void *ctx) {
         calibration_blocks(&spatial_rectangles);
     int used = snprintf(
         json, sizeof(json),
-        "{\"receiverConnecting\":%s,\"calibrationProfile\":\"%s\",\"effectiveCalibration\":\"%s\","
+        "{\"receiverConnecting\":%s,\"powerPaused\":%s,\"calibrationProfile\":\"%s\",\"effectiveCalibration\":\"%s\","
         "\"tvModel\":\"%s\",\"customModel\":\"%s\",\"customPoints\":[",
-        receiver_runtime.starting ? "true" : "false", calibration_key(calibration.kind),
+        receiver_runtime.starting ? "true" : "false", capture_power_suspended ? "true" : "false",
+        calibration_key(calibration.kind),
         calibration_key(calibration_effective()), tv_model, calibration.model);
     for (unsigned i = 0; i < calibration.count; i++)
         used +=
@@ -112,7 +113,8 @@ static bool status(void *h, void *m, void *ctx) {
                  (unsigned long long)connection_test.elapsed, test_error,
                  capture_ctx.last_output_at ? (long long)(now - capture_ctx.last_output_at) : -1,
                  (unsigned long long)(retries.due > now ? retries.due - now : 0),
-                 capture_source == SOURCE_PICCAP_STARTING   ? "Starting PicCap"
+                 capture_power_suspended                    ? "Paused while TV display is off"
+                 : capture_source == SOURCE_PICCAP_STARTING ? "Starting PicCap"
                  : capture_source == SOURCE_PICCAP_STOPPING ? "Stopping PicCap"
                  : piccap_owned                             ? "PicCap"
                  : capture_ctx.handle                       ? "Histogram"

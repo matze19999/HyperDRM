@@ -1,15 +1,15 @@
 {
   "id": "org.webosbrew.histogramhyperion",
-  "version": "0.15.10",
+  "version": "0.15.11",
   "type": "web",
   "title": "HyperDRM",
   "appDescription": "Ambient lighting for webOS, Hyperion and HyperHDR",
   "iconUri": "https://raw.githubusercontent.com/matze19999/HyperDRM/main/app/icon.png",
   "sourceUrl": "https://github.com/matze19999/HyperDRM",
   "rootRequired": true,
-  "ipkUrl": "https://raw.githubusercontent.com/matze19999/HyperDRM/v0.15.10/HyperDRM_0.15.10_arm.ipk",
+  "ipkUrl": "https://raw.githubusercontent.com/matze19999/HyperDRM/v0.15.11/HyperDRM_0.15.11_arm.ipk",
   "ipkHash": {
-    "sha256": "36d8c6d4245b007acc68ec2b25718382ebcf6f7e66f5a5a491d21c4ea506417f"
+    "sha256": "120613f2e50d8a00e092b16895520a02f7a4d18a4c04a602c8187d9397625273"
   },
-  "ipkSize": 1263490
+  "ipkSize": 1265064
 }

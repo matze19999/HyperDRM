@@ -52,6 +52,8 @@ static bool (*reply)(void *, void *, const char *, LSError *);
 static const char *(*payload)(void *);
 static bool (*error_init)(LSError *);
 static void (*error_free)(LSError *);
+static bool (*call_subscribe)(void *, const char *, const char *, Callback, void *, unsigned long *,
+                              LSError *);
 static void *(*vt_init)(bool (*)(void));
 static int (*vt_preset)(void *, int), (*vt_get)(void *, Histogram *), (*vt_finish)(void *);
 static CaptureContext capture_ctx = {.pending_letterbox = -1};
@@ -208,6 +210,7 @@ static bool respond(void *h, void *m, const char *s) {
 #include "receiver_stream.h"
 #include "source_bridge.h"
 #include "frame_output.h"
+#include "power_state.h"
 #include "service_api.h"
 #include "mqtt_service.h"
 #include "dark_color.h"
@@ -267,6 +270,7 @@ int main(void) {
     vt_get = symbol(vt, "vtCapture_getHistogram");
     vt_finish = symbol(vt, "vtCapture_finalizeHistogram");
     call_once = symbol(ls, "LSCallOneReply");
+    call_subscribe = symbol(ls, "LSCall");
     cancel_call = symbol(ls, "LSCallCancel");
     if (playback_json_init(&playback_json)) {
         handover_load();
@@ -319,6 +323,7 @@ int main(void) {
     input_preview.enabled = geteuid() == 0 && playback_json.lib;
     if (!boot_enabled())
         retry_pause(&retries);
+    power_state_tick(milliseconds());
     ServiceTimer scheduler = {.add_timeout = timer, .period = 25};
     scheduler.id = timer(scheduler.period, service_timer_tick, &scheduler);
     while (!quitting && scheduler.id)
@@ -326,6 +331,7 @@ int main(void) {
     if (scheduler.id)
         remove_source(scheduler.id);
     input_preview_cancel();
+    power_state_cancel();
     mqtt_close(milliseconds(), NULL);
     stream_close(milliseconds());
     test_close();
@@ -339,7 +345,7 @@ int main(void) {
         retry_pause(&retries);
         uint64_t deadline = milliseconds() + 4000;
         while (piccap_owned && milliseconds() < deadline) {
-            handover_tick();
+            handover_tick(false);
             iterate(NULL, 0);
             usleep(10000);
         }

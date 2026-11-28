@@ -8,6 +8,8 @@ static unsigned initializes, finalizes;
 static int last_preset;
 static int fake_handle;
 static char answer[8192];
+static Callback fake_power_callback;
+static void *fake_power_context;
 static bool fake_reply(void *h, void *m, const char *s, LSError *e) {
     (void)h;
     (void)m;
@@ -40,6 +42,16 @@ static bool fake_cancel(void *h, unsigned long t, LSError *e) {
     (void)h;
     (void)t;
     (void)e;
+    return true;
+}
+static bool fake_subscribe(void *h, const char *uri, const char *body, Callback callback,
+                           void *context, unsigned long *token, LSError *e) {
+    (void)h;
+    (void)e;
+    assert(!strcmp(uri, POWER_STATE_URI) && !strcmp(body, "{\"subscribe\":true}"));
+    fake_power_callback = callback;
+    fake_power_context = context;
+    *token = 1;
     return true;
 }
 static void *fake_init(bool (*p)(void)) {
@@ -125,6 +137,97 @@ static void test_restart_after_flatbuffer_clear(void) {
     close(peer[1]);
     close(server);
     assert(unlink(TARGET_PREF) == 0);
+}
+
+static void test_power_state_lifecycle(void) {
+    int peer[2];
+    assert(!socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, peer));
+    int server = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+    assert(server >= 0);
+    struct sockaddr_in address = {.sin_family = AF_INET, .sin_addr = {htonl(INADDR_LOOPBACK)}};
+    assert(!bind(server, (void *)&address, sizeof(address)) && !listen(server, 1));
+    socklen_t length = sizeof(address);
+    assert(!getsockname(server, (void *)&address, &length));
+
+    strcpy(target.receiver, "HyperHDR");
+    strcpy(target.output, "flatbuffer");
+    target.piccap_port = ntohs(address.sin_port);
+    retry_reset(&retries);
+    FlatbufferOutput *output = &receiver_runtime.flatbuffer;
+    output->fd = peer[0];
+    output->priority = PRIORITY;
+    output->stage = FB_READY;
+    output->scratch_capacity = 128;
+    output->scratch = malloc(output->scratch_capacity);
+    output->replies = malloc(FB_REPLY_LIMIT);
+    const uint8_t color[] = {255, 255, 255};
+    assert(output->scratch && output->replies);
+    assert(fb_out_frame(output, color, 1, 1, 1500, milliseconds()));
+    capture_ctx.handle = &fake_handle;
+    unsigned finished = finalizes;
+
+    call_subscribe = fake_subscribe;
+    power_state_tick(milliseconds());
+    assert(fake_power_callback(NULL, "{\"returnValue\":true,\"subscribed\":true,\"state\":\"Active\"}",
+                               fake_power_context));
+    assert(power_monitor.confirmed && !capture_power_suspended);
+    assert(fake_power_callback(NULL, "{\"state\":\"Active Standby\"}", fake_power_context));
+    assert(capture_power_suspended && !capture_ctx.handle && finalizes == finished + 1);
+    assert(retries.due && !retries.paused && output->closing && !output->pending);
+    assert(status((void *)1, "{}", NULL) && strstr(answer, "\"powerPaused\":true"));
+
+    uint8_t request[256], scratch[128];
+    FlatBuffer expected = {.buf = scratch, .capacity = sizeof(scratch)};
+    size_t clear_size = fb_encode_clear(&expected, PRIORITY);
+    ssize_t received = recv(peer[1], request, sizeof(request), 0);
+    assert(received == (ssize_t)(4 + clear_size));
+    assert(request[0] == 0 && request[1] == 0 && request[2] == 0 && request[3] == clear_size);
+    assert(!memcmp(request + 4, scratch + sizeof(scratch) - clear_size, clear_size));
+    const uint8_t clear_ack[] = {0,0,0,12, 8,0,0,0, 4,0,4,0, 4,0,0,0};
+    assert(send(peer[1], clear_ack, sizeof(clear_ack), MSG_NOSIGNAL) == sizeof(clear_ack));
+    tick(NULL);
+    assert(output->stage == FB_IDLE && accept(server, NULL, NULL) < 0);
+    close(peer[1]);
+    assert(fake_power_callback(NULL, "{\"state\":null}", fake_power_context) && capture_power_suspended);
+    assert(fake_power_callback(NULL, "{\"state\":\"Screen Off\"}", fake_power_context));
+    assert(finalizes == finished + 1);
+    assert(start((void *)1, "{}", NULL) && strstr(answer, "\"powerPaused\":true"));
+    assert(!receiver_runtime.starting);
+    assert(fake_power_callback(NULL, "{\"state\":\"Active\"}", fake_power_context));
+    assert(retries.due && !capture_power_suspended);
+
+    for (unsigned i = 0; i < 1000 && !output->awaiting; i++) {
+        tick(NULL);
+        usleep(1000);
+    }
+    assert(output->stage == FB_REGISTERING && output->awaiting);
+    int connection = accept(server, NULL, NULL);
+    assert(connection >= 0 && recv(connection, request, sizeof(request), 0) > 4);
+    const uint8_t registered[] = {0,0,0,24, 16,0,0,0, 10,0,8,0, 0,0,0,0, 4,0,0,0,
+                                  12,0,0,0, PRIORITY,0,0,0};
+    assert(send(connection, registered, sizeof(registered), MSG_NOSIGNAL) == sizeof(registered));
+    for (unsigned i = 0; i < 100 && !capture_ctx.handle; i++) {
+        tick(NULL);
+        usleep(1000);
+    }
+    assert(capture_ctx.handle && output->stage == FB_READY && output->awaiting);
+    assert(fake_power_callback(NULL, "{\"state\":\"Suspend\"}", fake_power_context));
+    assert(!capture_ctx.handle && output->fd < 0 && finalizes == finished + 2);
+    assert(stop((void *)1, "{}", NULL));
+    assert(fake_power_callback(NULL, "{\"state\":\"Active\"}", fake_power_context));
+    tick(NULL);
+    assert(retries.paused && !retries.due && !receiver_runtime.starting);
+    assert(fake_power_callback(NULL, "{\"returnValue\":false}", fake_power_context));
+    assert(!power_monitor.token && !capture_power_suspended);
+    void *stale = fake_power_context;
+    power_state_tick(power_monitor.next_probe);
+    assert(power_monitor.token && fake_power_context != stale);
+    assert(fake_power_callback(NULL, "{\"state\":\"Power Off\"}", stale) && !capture_power_suspended);
+    power_state_cancel();
+    call_subscribe = NULL;
+    fb_out_release(output);
+    close(connection);
+    close(server);
 }
 int main(void) {
     assert(access(DEV_MODE, F_OK) != 0);
@@ -236,7 +339,8 @@ int main(void) {
     assert(access(DEV_MODE, F_OK) != 0);
     close(server);
     test_restart_after_flatbuffer_clear();
+    test_power_state_lifecycle();
     dlclose(playback_json.lib);
     puts("PASS: service Start/Stop during connect, delayed receiver ACK leaves Status/Stop "
-         "responsive, black bar control over Luna and MQTT, asynchronous clear and no restart after Stop");
+         "responsive, black bar control, FlatBuffer clear on standby, wake and manual Stop");
 }

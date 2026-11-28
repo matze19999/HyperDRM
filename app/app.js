@@ -199,6 +199,12 @@ function display(result) {
     }
     document.getElementById('error').textContent = actionError || result.errorText || result.error || '';
     document.getElementById('status').textContent = result.returnValue === false ? 'Service unavailable' : (result.receiverConnecting ? 'Connecting to receiver' : result.running ? 'Running' : 'Stopped') + ' · ' + (result.frames || 0) + ' acknowledged color updates';
+    if (result.powerPaused) {
+        document.getElementById('status').textContent = 'Paused while TV display is off';
+        document.getElementById('regions').textContent = '';
+        checkServiceVersion(result);
+        return;
+    }
     if (result.activeSource === 'PicCap') {
         document.getElementById('status').textContent = 'PicCap · ' + (result.running ? 'Running' : 'Switching capture source') + ' · ' + (result.piccapConnected ? 'Receiver connected' : 'Waiting for receiver');
         document.getElementById('regions').textContent = '';

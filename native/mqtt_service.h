@@ -185,6 +185,7 @@ static bool mqtt_publish_state(uint64_t now) {
                      "\"enabled\":true,\"host\":\"%s\",\"port\":%u,\"username\":%s,\"passwordSet\":%s},"
                      "\"customProfile\":{\"model\":\"%s\",\"geometry\":\"%s\",\"points\":[",
                      source, source_modes[requested_source],
+                     capture_power_suspended ? "Standby" :
                      receiver_runtime.starting || capture_source == SOURCE_PICCAP_STARTING ? "Connecting" :
                      sending || !strcmp(source, "PicCap") ? "Connected" : retries.due ? "Retrying" : "Idle",
                      error, test_stage_name(), test_error,

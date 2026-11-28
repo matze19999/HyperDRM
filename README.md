@@ -66,6 +66,8 @@ The app's **Autostart: On/Off** switch controls the own hook `/var/lib/webosbrew
 
 **Stop** ends the current capture session and pauses retries until **Start** or the next service launch/boot; it leaves the saved autostart preference unchanged. The hook is a symlink to `boot.sh` inside the service container. Removal leaves a harmless dangling link; the script also exits when its service target is absent. Turning autostart off removes the own hook and cancels waiting boot attempts. A foreign file or symlink at that path will not be overwritten.
 
+When webOS reports standby or screen off, HyperDRM pauses capture and releases its receiver priority for JSON and FlatBuffer output. Capture that was running or starting resumes when the display wakes. A manual **Stop** keeps capture stopped across the power transition.
+
 Boot log: `/var/lib/webosbrew/histogramhyperion-boot.log`.
 
 ## Recent input preview

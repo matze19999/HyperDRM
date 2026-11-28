@@ -18,6 +18,11 @@ static bool start(void *h, void *m, void *ctx) {
                        "settings to configure the receiver\"}");
     if (m)
         retry_reset(&retries);
+    if (capture_power_suspended) {
+        if (!retries.paused && !retries.blocked)
+            retries.due = milliseconds();
+        return respond(h, m, "{\"returnValue\":true,\"powerPaused\":true,\"retryScheduled\":true}");
+    }
     if (piccap_owned)
         return respond(h, m, "{\"returnValue\":true,\"running\":true,\"activeSource\":\"PicCap\"}");
     if (capture_ctx.handle)
@@ -89,7 +94,7 @@ static bool stop(void *h, void *m, void *ctx) {
     bridge_phase = BRIDGE_IDLE;
     memset(&capture_ctx.continuity, 0, sizeof(capture_ctx.continuity));
     stop_capture();
-    if (bridging && !receiver_ready()) {
+    if (bridging && !capture_power_suspended && !receiver_ready()) {
         receiver_begin(milliseconds());
         receiver_runtime.clear_pending = true;
     }

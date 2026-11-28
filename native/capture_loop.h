@@ -2,6 +2,7 @@
 static int tick(void *unused) {
     (void)unused;
     uint64_t now = milliseconds();
+    power_state_tick(now);
     static uint64_t next_mqtt_poll;
     if (now >= next_mqtt_poll) {
         mqtt_service_tick(now);
@@ -48,11 +49,15 @@ static int tick(void *unused) {
     input_preview_tick(now);
     test_tick(&playback_json, now);
     display_tick(&playback_json, now, mqtt.stage == MQTT_READY);
+    if (capture_power_suspended) {
+        handover_tick(false);
+        return 1;
+    }
     layout_refresh_tick(&playback_json, now, capture_ctx.handle || capture_source == SOURCE_PICCAP,
                         &receiver_layout);
     stream_tick(&playback_json, now, (piccap_owned || requested_source == MODE_PICCAP ||
                  (requested_source == MODE_AUTO && handover_enabled)) && !retries.paused && !retries.blocked);
-    bool owned = handover_tick();
+    bool owned = handover_tick(true);
     if (!target_flatbuffer(&target)) {
         bridge_tick(now, &capture_ctx);
     } else if (capture_source != bridge_source) {
