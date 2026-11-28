@@ -111,6 +111,7 @@ static const struct MqttEntity {
     {"switch", "running", "Ambient lighting", MQTT_SWITCH, true},
     {"switch", "autostart", "Lighting autostart", MQTT_SWITCH, true},
     {"switch", "piccapHandover", "Automatic PicCap handover", MQTT_SWITCH, true},
+    {"switch", "blackBarDetection", "Black bar detection", MQTT_SWITCH, true},
     {"select", "sourceMode", "Source mode", "\"options\":[\"Auto\",\"HyperDRM\",\"PicCap\"]", true},
     {"select", "receiver", "Receiver type", "\"options\":[\"Hyperion\",\"HyperHDR\"]", true},
     {"select", "output", "Output transport", "\"options\":[\"json\",\"flatbuffer\"]", true},
@@ -120,7 +121,7 @@ static const struct MqttEntity {
     {"number", "captureIntervalMs", "Capture interval", "\"min\":25,\"max\":1000,\"step\":25,\"mode\":\"box\",\"unit_of_measurement\":\"ms\"", true},
     {"number", "blackCutoff", "Black cutoff", "\"min\":0,\"max\":64,\"step\":1,\"mode\":\"box\"", true},
     {"select", "geometry", "Calibration geometry", "\"options\":[\"rim\",\"rectangles\"]", true},
-    {"select", "profile", "Calibration profile", "\"options\":[\"auto\",\"g4\",\"average\",\"custom\"]", true},
+    {"select", "profile", "Calibration profile", "\"options\":[\"auto\",\"g4\",\"average\",\"custom\",\"g4-overlap\",\"measured\"]", true},
     {"button", "test", "Test receiver connection", "\"payload_press\":\"PRESS\"", true},
     {"button", "clearToken", "Clear receiver API token", "\"payload_press\":\"PRESS\"", true}
 };
@@ -176,7 +177,8 @@ static bool mqtt_publish_state(uint64_t now) {
     int n = snprintf(json, sizeof(json),
                      "{\"activeSource\":\"%s\",\"sourceMode\":\"%s\",\"receiverState\":\"%s\","
                      "\"error\":%s,\"connectionTest\":\"%s\",\"connectionTestError\":%s,\"letterbox\":\"%s\","
-                     "\"running\":\"%s\",\"autostart\":\"%s\",\"piccapHandover\":\"%s\",\"inputPreview\":\"%s\","
+                     "\"running\":\"%s\",\"autostart\":\"%s\",\"piccapHandover\":\"%s\","
+                     "\"blackBarDetection\":\"%s\",\"inputPreview\":\"%s\","
                      "\"receiver\":\"%s\",\"host\":\"%s\",\"port\":%u,\"piccapPort\":%u,"
                      "\"captureIntervalMs\":%u,\"blackCutoff\":%u,\"output\":\"%s\",\"profile\":\"%s\",\"effectiveProfile\":\"%s\",\"geometry\":\"%s\","
                      "\"piccapInstalled\":%s,\"piccapConnected\":%s,\"tokenSet\":%s,\"mqtt\":{"
@@ -185,9 +187,11 @@ static bool mqtt_publish_state(uint64_t now) {
                      source, source_modes[requested_source],
                      receiver_runtime.starting || capture_source == SOURCE_PICCAP_STARTING ? "Connecting" :
                      sending || !strcmp(source, "PicCap") ? "Connected" : retries.due ? "Retrying" : "Idle",
-                     error, test_stage_name(), test_error, capture_ctx.handle && capture_ctx.letterbox_mode ? "ON" : "OFF",
+                     error, test_stage_name(), test_error,
+                     !target.black_bar_detection_disabled && capture_ctx.handle && capture_ctx.letterbox_mode ? "ON" : "OFF",
                      !retries.paused && (capture_ctx.handle || receiver_runtime.starting || piccap_owned || retries.due) ? "ON" : "OFF",
-                     boot_enabled() ? "ON" : "OFF", handover_enabled ? "ON" : "OFF", input_preview_status(),
+                     boot_enabled() ? "ON" : "OFF", handover_enabled ? "ON" : "OFF",
+                     target.black_bar_detection_disabled ? "OFF" : "ON", input_preview_status(),
                      target.receiver, target.host, target.port, target.piccap_port, target_capture_interval(&target), target.black_cutoff,
                      target_flatbuffer(&target) ? "flatbuffer" : "json",
                      calibration_key(calibration.kind), calibration_key(calibration_effective()),
@@ -318,6 +322,8 @@ static void mqtt_on_command(const char *topic, const char *value) {
         autostart_request(NULL, NULL, enabled);
     } else if (!strcmp(key, "piccapHandover") && (on || off)) {
         handover_request(NULL, NULL, enabled);
+    } else if (!strcmp(key, "blackBarDetection") && (on || off)) {
+        black_bar_detection_request(NULL, NULL, enabled);
     } else if (!strcmp(key, "sourceMode")) {
         source_mode_request(NULL, NULL, value);
     } else if (!strcmp(key, "receiverSettings")) {
@@ -327,9 +333,10 @@ static void mqtt_on_command(const char *topic, const char *value) {
     } else if (!strcmp(key, "calibration")) {
         set_calibration_request(NULL, NULL, value);
     } else if (!strcmp(key, "profile") &&
-               (!strcmp(value, "auto") || !strcmp(value, "g4") || !strcmp(value, "average") || !strcmp(value, "custom"))) {
+               (!strcmp(value, "auto") || !strcmp(value, "g4") || !strcmp(value, "average") ||
+                !strcmp(value, "custom") || !strcmp(value, "g4-overlap") || !strcmp(value, "measured"))) {
         char body[64];
-        snprintf(body, sizeof(body), "{\"profile\":\"%.7s\"}", value);
+        snprintf(body, sizeof(body), "{\"profile\":\"%.10s\"}", value);
         set_calibration_request(NULL, NULL, body);
     } else if (!strcmp(key, "geometry") && (!strcmp(value, "rim") || !strcmp(value, "rectangles"))) {
         char body[72];

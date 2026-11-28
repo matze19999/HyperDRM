@@ -24,10 +24,12 @@
 typedef struct {
     char host[46], receiver[16], token[257], output[16];
     unsigned port, piccap_port, capture_interval, black_cutoff;
+    bool black_bar_detection_disabled;
 } TargetConfig;
 static TargetConfig target = {
     .host = "127.0.0.1", .receiver = "Hyperion", .port = 19444, .piccap_port = 19400,
-    .capture_interval = 50, .black_cutoff = DEFAULT_BLACK_CUTOFF, .output = "json"};
+    .capture_interval = 50, .black_cutoff = DEFAULT_BLACK_CUTOFF, .output = "json",
+    .black_bar_detection_disabled = true};
 static inline bool target_flatbuffer(const TargetConfig *t) {
     return !strcmp(t->receiver, "HyperHDR") && !strcmp(t->output, "flatbuffer");
 }
@@ -140,6 +142,13 @@ static bool target_parse(PlaybackJson *j, const char *text, TargetConfig *out) {
             next.black_cutoff = (unsigned)cutoff;
     }
     void *output = NULL;
+    void *black_bars = NULL;
+    if (j->type(root) == 4 && j->get(root, "blackBarDetection", &black_bars)) {
+        if (!black_bars || j->type(black_bars) != 1)
+            valid = false;
+        else
+            next.black_bar_detection_disabled = !j->boolean(black_bars);
+    }
     if (j->type(root) == 4 && j->get(root, "output", &output)) {
         if (!output || j->type(output) != 6)
             valid = false;
@@ -171,9 +180,10 @@ static bool target_save(const char *path, const TargetConfig *t) {
     int n = snprintf(
         data, sizeof(data),
         "{\"host\":\"%s\",\"port\":%u,\"piccapPort\":%u,\"receiver\":\"%s\","
-        "\"output\":\"%s\",\"token\":\"%s\",\"captureIntervalMs\":%u,\"blackCutoff\":%u}\n",
+        "\"output\":\"%s\",\"token\":\"%s\",\"captureIntervalMs\":%u,\"blackCutoff\":%u,"
+        "\"blackBarDetection\":%s}\n",
         t->host, t->port, t->piccap_port, t->receiver, t->output[0] ? t->output : "json", t->token,
-        target_capture_interval(t), t->black_cutoff);
+        target_capture_interval(t), t->black_cutoff, t->black_bar_detection_disabled ? "false" : "true");
     return n > 0 && (size_t)n < sizeof(data) &&
            atomic_replace(path, data, (size_t)n) != SAVE_UNCHANGED;
 }
@@ -187,7 +197,13 @@ static bool target_load(PlaybackJson *j, const char *path, TargetConfig *t) {
     if (n <= 0 || n == (ssize_t)sizeof(data) - 1)
         return false;
     data[n] = 0;
-    return target_parse(j, data, t);
+    TargetConfig saved = *t;
+    /* Existing configurations without this setting used detection by default. */
+    saved.black_bar_detection_disabled = false;
+    if (!target_parse(j, data, &saved))
+        return false;
+    *t = saved;
+    return true;
 }
 static int target_open_port(const TargetConfig *t, unsigned port) {
     if (!target_valid(t) || !port || port > 65535)

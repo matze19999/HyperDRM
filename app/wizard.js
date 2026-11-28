@@ -8,9 +8,11 @@ var WizardPhase = {
 };
 var wizard = null;
 var video = document.getElementById('calibrationVideo');
+var overlapButton = document.getElementById('calibrateOverlap');
 
 function wizardFinish(error) {
     if (!wizard) return;
+    var usedResponse = wizard.response;
     clearInterval(wizard.timer);
     wizard = null;
     window.remoteNavigationScope = null;
@@ -22,6 +24,7 @@ function wizardFinish(error) {
     }
     document.getElementById('cancelCalibration').disabled = true;
     document.getElementById('calibrate').disabled = false;
+    if (overlapButton) overlapButton.disabled = false;
     document.getElementById('validateCalibration').disabled = false;
     call('calibrationSession', function(r) {
         if (r.returnValue === false) document.getElementById('error').textContent = r.errorText;
@@ -33,7 +36,8 @@ function wizardFinish(error) {
         message: error || document.getElementById('wizardStatus').textContent
     });
     if (error) document.getElementById('wizardStatus').textContent = error;
-    document.getElementById('calibrate').focus();
+    var next = usedResponse && !error && pendingResponse && document.getElementById('saveProfile');
+    (next || (usedResponse && overlapButton) || document.getElementById('calibrate')).focus();
 }
 
 function wizardSample() {
@@ -45,8 +49,18 @@ function wizardSample() {
     }
     if (wizard.phase !== WizardPhase.MEASURING) return;
     var t = video.currentTime;
-    if (t >= 68) {
+    if (t >= 4 + wizard.patches.length * 2) {
         try {
+            if (wizard.response) {
+                var response = learnEdgeResponse(calibrationAverage(wizard.baseline), wizard.patches.map(calibrationAverage), wizard.model);
+                pendingResponse = response;
+                profile = 'measured';
+                profileDirty = true;
+                showProfile();
+                document.getElementById('wizardStatus').textContent = 'Localized ' + response.verified + ' of ' + responseChecks.length + ' independent test fields. Select Save profile to use these measurements.';
+                wizardFinish();
+                return;
+            }
             var measured = calibrationFit(calibrationAverage(wizard.baseline), wizard.patches.map(calibrationAverage), wizard.model);
             profile = 'custom';
             profileDirty = true;
@@ -93,14 +107,15 @@ function wizardSample() {
         // Ignore duplicates, held output and replies crossing a stimulus boundary.
         var current = video.currentTime,
             nowStep = current < 4 ? -1 : Math.floor((current - 4) / 2);
-        if (nowStep !== step || s.sampleSequence === wizard.sequence || s.sampleAgeMs < 0 || s.sampleAgeMs > 350 || !s.colorValid || !Array.isArray(s.regions) || s.regions.length !== 16) return;
+        if (nowStep !== step || s.activeSource !== 'HyperDRM' || s.holdingColors || s.sampleSequence === wizard.sequence ||
+            !(s.sampleAgeMs >= 0 && s.sampleAgeMs <= 350) || !s.colorValid || !Array.isArray(s.regions) || s.regions.length !== 16) return;
         wizard.sequence = s.sampleSequence;
         (step < 0 ? wizard.baseline : wizard.patches[step]).push(calibrationLuma(s.regions));
-        document.getElementById('wizardStatus').textContent = step < 0 ? 'Measuring black reference...' : 'Measuring edge patch ' + (step + 1) + ' of 32...';
+        document.getElementById('wizardStatus').textContent = step < 0 ? 'Measuring the background...' : 'Measuring field ' + (step + 1) + ' of ' + wizard.patches.length + '...';
     });
 }
 
-function wizardStart(validation) {
+function wizardStart(validation, response) {
     if (typeof versionCompatible !== 'undefined' && !versionCompatible) {
         document.getElementById('wizardStatus').textContent = 'Finish the app/service update before calibration.';
         return;
@@ -112,19 +127,21 @@ function wizardStart(validation) {
         return;
     }
     document.getElementById('calibrate').disabled = true;
+    if (overlapButton) overlapButton.disabled = true;
     document.getElementById('validateCalibration').disabled = true;
     document.getElementById('cancelCalibration').disabled = false;
     window.remoteNavigationScope = ['cancelCalibration'];
     wizard = {
         phase: WizardPhase.STARTING,
         validation: validation,
+        response: response === true,
         started: Date.now(),
         busy: false,
         sequence: -1,
         model: '',
         baseline: [],
         patches: Array.from({
-            length: 32
+            length: response ? responseRows + responseChecks.length : 32
         }, function() {
             return [];
         })
@@ -139,7 +156,7 @@ function wizardStart(validation) {
         }
         // Start the video plane before waiting for histogram data. Without another
         // running video, waiting first would prevent calibration from ever starting.
-        video.src = 'calibration.mp4';
+        video.src = response ? 'calibration-response.mp4' : 'calibration.mp4';
         if (typeof video.load === 'function') video.load();
         video.style.display = 'block';
         var warmup = video.play();
@@ -179,6 +196,9 @@ function wizardStart(validation) {
 document.getElementById('calibrate').onclick = function() {
     wizardStart(false);
 };
+if (overlapButton) overlapButton.onclick = function() {
+    wizardStart(false, true);
+};
 document.getElementById('validateCalibration').onclick = function() {
     wizardStart(true);
 };
@@ -206,6 +226,7 @@ function wizardLaunch(raw) {
     try {
         var params = typeof raw === 'string' ? JSON.parse(raw) : raw;
         if (params && params.action === 'calibrate') wizardStart(false);
+        else if (params && params.action === 'measureLedPositions') wizardStart(false, true);
         else if (params && params.action === 'repairRoot') {
             showPanel('overview');
             repairRoot(function(ok) {

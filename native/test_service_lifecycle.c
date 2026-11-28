@@ -5,6 +5,7 @@
 #undef main
 #include <assert.h>
 static unsigned initializes, finalizes;
+static int last_preset;
 static int fake_handle;
 static char answer[8192];
 static bool fake_reply(void *h, void *m, const char *s, LSError *e) {
@@ -48,7 +49,7 @@ static void *fake_init(bool (*p)(void)) {
 }
 static int fake_preset(void *h, int p) {
     assert(h == &fake_handle);
-    (void)p;
+    last_preset = p;
     return 0;
 }
 static int fake_get(void *h, Histogram *hist) {
@@ -191,6 +192,35 @@ int main(void) {
     uint64_t before = milliseconds();
     assert(status((void *)1, "{}", NULL));
     assert(milliseconds() - before < 100 && strstr(answer, "\"running\":true"));
+    assert(strstr(answer, "\"blackBarDetection\":false"));
+    assert(black_bar_detection((void *)1, "{\"enabled\":true}", NULL));
+    assert(strstr(answer, "\"returnValue\":true") && !target.black_bar_detection_disabled);
+    TargetConfig loaded = target;
+    loaded.black_bar_detection_disabled = true;
+    assert(target_load(&playback_json, TARGET_PREF, &loaded) && !loaded.black_bar_detection_disabled);
+    capture_ctx.preset = capture_ctx.letterbox_mode = 1;
+    capture_ctx.pending_letterbox = 1;
+    last_preset = 1;
+    int receiver_fd = receiver_runtime.output.fd;
+    assert(black_bar_detection((void *)1, "{\"enabled\":false}", NULL));
+    assert(strstr(answer, "\"returnValue\":true") && target.black_bar_detection_disabled);
+    assert(capture_ctx.pending_letterbox == -1);
+    tick(NULL);
+    assert(last_preset == 0 && capture_ctx.preset == 0 && capture_ctx.letterbox_mode == 0);
+    assert(capture_ctx.handle && receiver_runtime.output.fd == receiver_fd);
+    assert(status((void *)1, "{}", NULL));
+    assert(strstr(answer, "\"blackBarDetection\":false") && strstr(answer, "\"letterboxDetected\":false"));
+    const char *topic = "hyperdrm/test/set/blackBarDetection";
+    strcpy(mqtt_config.id, "test");
+    mqtt_on_command(topic, "INVALID");
+    assert(target.black_bar_detection_disabled);
+    mqtt_on_command(topic, "ON");
+    assert(!target.black_bar_detection_disabled && capture_ctx.handle && receiver_runtime.output.fd == receiver_fd);
+    mqtt_on_command(topic, "OFF");
+    loaded.black_bar_detection_disabled = false;
+    assert(target_load(&playback_json, TARGET_PREF, &loaded) && loaded.black_bar_detection_disabled);
+    assert(unlink(TARGET_PREF) == 0);
+    target.black_bar_detection_disabled = false;
     before = milliseconds();
     assert(stop((void *)1, "{}", NULL));
     assert(milliseconds() - before < 100);
@@ -208,5 +238,5 @@ int main(void) {
     test_restart_after_flatbuffer_clear();
     dlclose(playback_json.lib);
     puts("PASS: service Start/Stop during connect, delayed receiver ACK leaves Status/Stop "
-         "responsive, fake capture lifecycle, asynchronous clear and no restart after Stop");
+         "responsive, black bar control over Luna and MQTT, asynchronous clear and no restart after Stop");
 }

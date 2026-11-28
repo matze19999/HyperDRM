@@ -299,6 +299,7 @@ int main(void) {
                         {"restartService", restart_service, 0},
                         {"handover", handover, 0},
                         {"settings", settings, 0},
+                        {"blackBarDetection", black_bar_detection, 0},
                         {"mqttSettings", mqtt_settings, 0},
                         {"mqttStatus", mqtt_status, 0},
                         {"sourceMode", source_mode, 0},

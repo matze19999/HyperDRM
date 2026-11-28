@@ -84,9 +84,24 @@ static int tick(void *unused) {
         retry_source_transition(&retries, milliseconds());
         return 1;
     }
+    if (target.black_bar_detection_disabled && (capture_ctx.letterbox_mode || capture_ctx.preset)) {
+        capture_ctx.letterbox_mode = 0;
+        capture_ctx.next_border_probe = 0;
+        if (capture_ctx.preset) {
+            if (vt_preset(capture_ctx.handle, 0) != 0) {
+                set_error("Full-screen capture preset failed");
+                stop_capture();
+                return 1;
+            }
+            capture_ctx.preset = 0;
+            capture_ctx.color_valid = false;
+            capture_ctx.settle_until = milliseconds() + HISTOGRAM_SETTLE_MS;
+        }
+    }
     if (now < capture_ctx.settle_until)
         return 1;
-    if (!CALIBRATION_ACTIVE && capture_ctx.letterbox_mode && capture_ctx.preset == 1 &&
+    if (!CALIBRATION_ACTIVE && !target.black_bar_detection_disabled &&
+        capture_ctx.letterbox_mode && capture_ctx.preset == 1 &&
         milliseconds() >= capture_ctx.next_border_probe) {
         if (vt_preset(capture_ctx.handle, 0) != 0) {
             set_error("Border probe preset failed");
@@ -115,7 +130,8 @@ static int tick(void *unused) {
         unsigned hold_duration =
             (unsigned)(1500 - (now - capture_ctx.continuity.missing_at));
         OutputFrame frame =
-            frame_build(held, receiver_layout.blends, receiver_layout.count, hold_duration);
+            frame_build(held, receiver_layout.blends, receiver_layout.count, hold_duration,
+                        capture_ctx.overlap_applied && frame_overlap_response() ? capture_ctx.rgb : NULL);
         bool failed = !frame_send(&frame, hold_duration, 0);
         frame_release(&frame);
         if (failed) {
@@ -150,7 +166,7 @@ static int tick(void *unused) {
                                                   : histogram_mean(hist[i].bins[c]);
             aggregate[c] += capture_ctx.rgb[i][c];
         }
-    if (!CALIBRATION_ACTIVE && capture_ctx.preset == 0) {
+    if (!CALIBRATION_ACTIVE && !target.black_bar_detection_disabled && capture_ctx.preset == 0) {
         int candidate = letterbox_candidate(capture_ctx.black_percent, capture_ctx.rgb);
         uint64_t now = milliseconds();
         if (candidate < 0)
@@ -185,7 +201,10 @@ static int tick(void *unused) {
         dark_color_filter(mapped_rgb[i], target.black_cutoff);
     continuity_frame(&capture_ctx.continuity, true, mapped_rgb, now, stable_rgb);
     receiver_layout.interpolation = receiver_layout.count && calibration_effective() != CAL_AVERAGE;
-    OutputFrame frame = frame_build(stable_rgb, receiver_layout.blends, receiver_layout.count, 1500);
+    bool resolve_overlap = frame_overlap_response() && !capture_ctx.preset && !capture_ctx.continuity.fading;
+    OutputFrame frame = frame_build(stable_rgb, receiver_layout.blends, receiver_layout.count, 1500,
+                                    resolve_overlap ? capture_ctx.rgb : NULL);
+    capture_ctx.overlap_applied = frame.overlap_applied;
     int failed = !frame_send(&frame, 1500, sample_start);
     frame_release(&frame);
     if (failed) {

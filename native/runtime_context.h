@@ -15,7 +15,7 @@ typedef struct {
     uint64_t candidate_since, next_border_probe, sample_at, capture_due, settle_until;
     unsigned sample_sequence, recoveries;
     uint64_t recovery_started, last_recovery_ms, last_output_at;
-    bool color_valid;
+    bool color_valid, overlap_applied;
     Continuity continuity;
     SampleTiming sample_timing;
     volatile sig_atomic_t revoked;

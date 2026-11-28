@@ -7,15 +7,41 @@
 typedef struct {
     char *line;
     unsigned char *plane;
+    bool overlap_applied;
 } OutputFrame;
 
+static const EdgeResponse *frame_overlap_response(void) {
+    CalibrationKind kind = calibration_effective();
+    if (kind == CAL_MEASURED)
+        return &calibration.response;
+    if (kind == CAL_G4_OVERLAP && !strcmp(target.receiver, "HyperHDR"))
+        return &g4_response;
+    return NULL;
+}
+
 static OutputFrame frame_build(const unsigned char colors[16][3], const LedBlend *mapping,
-                               unsigned count, unsigned duration) {
-    OutputFrame frame = {NULL, NULL};
+                               unsigned count, unsigned duration, const unsigned char regions[16][3]) {
+    OutputFrame frame = {0};
+    const EdgeResponse *response = frame_overlap_response();
     if (target_flatbuffer(&target)) {
         frame.plane = malloc((size_t)SPATIAL_PIXELS * 3);
-        if (frame.plane)
-            spatial_plane(colors, frame.plane);
+        if (frame.plane) {
+            frame.overlap_applied = regions && response && spatial_edge_response(
+                regions, frame.plane, target.black_cutoff, response, calibration_revision());
+            if (!frame.overlap_applied)
+                spatial_plane(colors, frame.plane);
+        }
+        return frame;
+    }
+    if (response && count && mapping) {
+        static unsigned char plane[SPATIAL_PIXELS * 3];
+        frame.overlap_applied = regions && spatial_edge_response(
+            regions, plane, target.black_cutoff, response, calibration_revision());
+        if (!frame.overlap_applied)
+            spatial_plane(colors, plane);
+        /* Hyperion treats a nonempty format as a named image codec. */
+        frame.line = spatial_rgb_command_format(plane, PRIORITY, duration,
+                                                !strcmp(target.receiver, "Hyperion") ? "" : "rgb");
         return frame;
     }
     frame.line = region_command(colors, mapping, count, duration);

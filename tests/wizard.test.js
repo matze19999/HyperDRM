@@ -1,13 +1,18 @@
 'use strict';
 const assert=require('assert'),fs=require('fs'),vm=require('vm');
 const elements={},events={},requests=[];let active=false,sequence=0,globalResponse=false,holdStatus=false,heldStatus=null;
-['calibrationVideo','cancelCalibration','calibrate','validateCalibration','wizardStatus','customProfile'].forEach(id=>elements[id]={style:{},disabled:false,currentTime:0,textContent:'',value:'',events:{},focus(){},pause(){},play(){return Promise.resolve();},addEventListener(k,f){this.events[k]=f;}});
-const c={profile:'auto',profileDirty:false,targetDirty:false,showProfile(){},display(){},setInterval(){return 1;},clearInterval(){},setTimeout(){},Date,Array,JSON,
+['calibrationVideo','cancelCalibration','calibrate','calibrateOverlap','validateCalibration','wizardStatus','customProfile'].forEach(id=>elements[id]={style:{},disabled:false,currentTime:0,textContent:'',value:'',events:{},focus(){},pause(){},play(){return Promise.resolve();},addEventListener(k,f){this.events[k]=f;}});
+const c={profile:'auto',profileDirty:false,targetDirty:false,pendingResponse:null,showProfile(){},display(){},setInterval(){return 1;},clearInterval(){},setTimeout(){},Date,Array,JSON,
  window:{addEventListener(k,f){events[k]=f;}},document:{getElementById(id){return elements[id];},addEventListener(k,f){events[k]=f;}},
  call(method,done,data){
   requests.push({method,data});if(method==='status' && holdStatus){heldStatus=done;return;}if(method==='calibrationSession')active=data.enabled;
   const t=elements.calibrationVideo.currentTime,step=t<4?-1:Math.floor((t-4)/2);
   const regions=Array.from({length:16},(_,r)=>{
+   if(c.wizard && c.wizard.response){
+    const [side,position]=step<0?[5,0]:step<28?[Math.floor(step/7),c.responsePositions[step%7]]:step<33?[4,0]:c.responseChecks[step-33];
+    const value=10+(side<4&&r>=side*3&&r<side*3+3?90*Math.max(0,1-Math.abs(r-side*3-position*2)):side===4&&r===14?80:0);
+    return [value,value,value];
+   }
    const center=r*2+.5,d=Math.min(Math.abs(step-center),32-Math.abs(step-center));
    const value=step<0?10:10+80*(globalResponse?1:Math.max(0,1-d/2));return [value,value,value];
   });
@@ -33,4 +38,11 @@ elements.validateCalibration.onclick();assert.equal(elements.calibrationVideo.cu
 elements.calibrate.onclick();let prevented=false;events.keydown({keyCode:461,preventDefault(){prevented=true;}});assert(prevented && !active);
 elements.calibrate.onclick();holdStatus=true;elements.calibrationVideo.currentTime=1;c.wizardSample();assert(heldStatus);const oldReply=heldStatus;
 elements.cancelCalibration.onclick();holdStatus=false;elements.calibrate.onclick();const newSession=c.wizard;oldReply({returnValue:false,errorText:'Old failure'});assert.strictEqual(c.wizard,newSession);assert(!c.wizard.busy);elements.cancelCalibration.onclick();
+c.profileDirty=false;elements.calibrateOverlap.onclick();assert.equal(elements.calibrationVideo.src,'calibration-response.mp4');
+[1,1.5,2].forEach(t=>{elements.calibrationVideo.currentTime=t;c.wizardSample();});
+for(let step=0;step<38;step++)[.8,1.1,1.4].forEach(t=>{elements.calibrationVideo.currentTime=4+step*2+t;c.wizardSample();});
+elements.calibrationVideo.currentTime=80;c.wizardSample();
+assert.equal(c.profile,'measured');assert(c.profileDirty);assert(!active);
+assert.equal(c.pendingResponse.responseModel,'OTHER-TV');assert.equal(c.pendingResponse.response.length,33);
+assert.equal(c.pendingResponse.verified,5);assert(!requests.some(r=>r.method==='calibration'));
 console.log('PASS: guided measurement, proposal without save, geometry kept, invalid-response preservation, validation, cancel/Back and scoped remote navigation');

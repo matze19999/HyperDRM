@@ -4,15 +4,16 @@
 #include <stdlib.h>
 #include "playback.h"
 #include "atomic_file.h"
+#include "edge_response.h"
 #define CALIBRATION_PREF                                                                           \
     "/media/developer/apps/usr/palm/services/org.webosbrew.histogramhyperion.service/"             \
     "calibration.json"
-#define CALIBRATION_JSON_MAX 4096
+#define CALIBRATION_JSON_MAX 8192
 typedef struct {
     double position;
     unsigned char region;
 } RimPoint;
-typedef enum { CAL_AUTO, CAL_G4, CAL_AVERAGE, CAL_CUSTOM } CalibrationKind;
+typedef enum { CAL_AUTO, CAL_G4, CAL_AVERAGE, CAL_CUSTOM, CAL_G4_OVERLAP, CAL_MEASURED } CalibrationKind;
 /* Optional measured sampling rectangle of one histogram region. LG reports the
  * mean of the pixels inside its own rectangle, so painting measured rectangles
  * back with 1/area weights is the inverse of that measurement. Rectangles may
@@ -33,6 +34,8 @@ typedef struct {
     unsigned rect_count;
     RegionRect rects[16];
     bool rect_geometry;
+    char response_model[64];
+    EdgeResponse response;
 } Calibration;
 static Calibration calibration;
 static char tv_model[64];
@@ -45,7 +48,7 @@ static const RimPoint g4_rim[] = {{0.2078431373, 7},  {0.3176470588, 3},  {0.549
                                   {2.1843137255, 9},  {2.5490196078, 1},  {2.8666666667, 5},
                                   {3.4, 15}};
 static inline const char *calibration_key(CalibrationKind kind) {
-    const char *keys[] = {"auto", "g4", "average", "custom"};
+    const char *keys[] = {"auto", "g4", "average", "custom", "g4-overlap", "measured"};
     return keys[kind];
 }
 static inline bool calibration_model_valid(const char *model) {
@@ -62,12 +65,50 @@ static inline bool calibration_is_g4(const char *model) {
     return strlen(model) >= 8 && !strncmp(model, "OLED", 4) && model[4] >= '0' && model[4] <= '9' &&
            model[5] >= '0' && model[5] <= '9' && model[6] == 'G' && model[7] == '4';
 }
+static inline bool calibration_measured_available(void) {
+    return tv_model[0] && !strcmp(calibration.response_model, tv_model);
+}
 static inline CalibrationKind calibration_effective(void) {
-    if (calibration.kind != CAL_AUTO)
+    if (calibration.kind == CAL_G4_OVERLAP)
+        return calibration_is_g4(tv_model) ? CAL_G4_OVERLAP : CAL_AVERAGE;
+    if (calibration.kind != CAL_AUTO && calibration.kind != CAL_MEASURED)
         return calibration.kind;
+    if (calibration_measured_available())
+        return CAL_MEASURED;
     if (calibration.count >= 2 && tv_model[0] && !strcmp(calibration.model, tv_model))
         return CAL_CUSTOM;
     return calibration_is_g4(tv_model) ? CAL_G4 : CAL_AVERAGE;
+}
+
+static inline bool calibration_response_parse(PlaybackJson *j, void *root, void *rows, Calibration *next) {
+    void *model = playback_field(j, root, "responseModel");
+    if (!model || j->type(model) != 6 || !calibration_model_valid(j->string(model)) ||
+        j->type(rows) != 5 || j->length(rows) != EDGE_RESPONSE_ROWS)
+        return false;
+    bool variation = false;
+    for (unsigned i = 0; i < EDGE_RESPONSE_ROWS; ++i) {
+        void *row = j->at(rows, i);
+        if (j->type(row) != 5 || j->length(row) != EDGE_REGIONS)
+            return false;
+        bool signal = false;
+        for (unsigned r = 0; r < EDGE_REGIONS; ++r) {
+            void *entry = j->at(row, r);
+            if (j->type(entry) != 3)
+                return false;
+            long value = strtol(j->string(entry), NULL, 10);
+            if (value < 0 || value > 1000)
+                return false;
+            next->response[i][r] = (unsigned short)value;
+            signal |= value > 0;
+            variation |= i < EDGE_SIDES * EDGE_SAMPLES && value != next->response[0][r];
+        }
+        if (!signal)
+            return false;
+    }
+    if (!variation)
+        return false;
+    strcpy(next->response_model, j->string(model));
+    return true;
 }
 /* Rectangle geometry is an opt-in alternative to perimeter rim interpolation
  * and only ever applies to a measured custom profile. Imported rectangles win;
@@ -160,7 +201,7 @@ static inline bool calibration_parse(PlaybackJson *j, const char *text, Calibrat
         return false;
     Calibration next = *result;
     bool valid = false;
-    for (unsigned k = 0; k < 4; k++)
+    for (unsigned k = CAL_AUTO; k <= CAL_MEASURED; k++)
         if (playback_is(j, root, "profile", calibration_key(k))) {
             next.kind = k;
             valid = true;
@@ -250,13 +291,20 @@ static inline bool calibration_parse(PlaybackJson *j, const char *text, Calibrat
     }
     if (next.kind == CAL_CUSTOM && next.count < 2)
         valid = false;
+    void *rows = NULL;
+    if (j->type(root) == 4 && j->get(root, "response", &rows))
+        valid = valid && calibration_response_parse(j, root, rows, &next);
+    if (next.kind == CAL_MEASURED && !next.response_model[0])
+        valid = false;
     j->put(root);
     if (valid)
         *result = next;
     return valid;
 }
 static inline bool calibration_save(const char *path, const Calibration *value) {
-    if (!value || value->kind < CAL_AUTO || value->kind > CAL_CUSTOM || value->count > 16 ||
+    if (!value || value->kind < CAL_AUTO || value->kind > CAL_MEASURED || value->count > 16 ||
+        (value->response_model[0] && !calibration_model_valid(value->response_model)) ||
+        (value->kind == CAL_MEASURED && !value->response_model[0]) ||
         (value->count && (value->count < 2 || !calibration_model_valid(value->model))))
         return false;
     for (unsigned i = 0; i < value->count; i++) {
@@ -300,6 +348,17 @@ static inline bool calibration_save(const char *path, const Calibration *value) 
                              "%s{\"region\":%u,\"x0\":%.12g,\"y0\":%.12g,\"x1\":%.12g,\"y1\":%.12g}",
                              i ? "," : "", value->rects[i].region, value->rects[i].x0,
                              value->rects[i].y0, value->rects[i].x1, value->rects[i].y1);
+        used += snprintf(data + used, sizeof(data) - used, "]");
+    }
+    if (value->response_model[0]) {
+        used += snprintf(data + used, sizeof(data) - used, ",\"responseModel\":\"%s\",\"response\":[",
+                         value->response_model);
+        for (unsigned i = 0; i < EDGE_RESPONSE_ROWS; ++i) {
+            used += snprintf(data + used, sizeof(data) - used, "%s[", i ? "," : "");
+            for (unsigned r = 0; r < EDGE_REGIONS; ++r)
+                used += snprintf(data + used, sizeof(data) - used, "%s%u", r ? "," : "", value->response[i][r]);
+            used += snprintf(data + used, sizeof(data) - used, "]");
+        }
         used += snprintf(data + used, sizeof(data) - used, "]");
     }
     used += snprintf(data + used, sizeof(data) - used, "}\n");

@@ -161,6 +161,39 @@ static bool handover(void *h, void *m, void *ctx) {
     (void)ctx;
     return handover_request(h, m, payload(m));
 }
+static void apply_hot_target(const TargetConfig *next) {
+    if (next->black_bar_detection_disabled != target.black_bar_detection_disabled) {
+        capture_ctx.pending_letterbox = -1;
+        capture_ctx.candidate_since = 0;
+    }
+    target = *next;
+}
+
+static bool black_bar_detection_request(void *h, void *m, const char *p) {
+    PlaybackJson *j = &playback_json;
+    void *root = j->lib ? playback_parse_exact(j, p) : NULL;
+    void *flag = root ? playback_field(j, root, "enabled") : NULL;
+    bool valid = flag && j->type(flag) == 1;
+    TargetConfig next = target;
+    if (valid)
+        next.black_bar_detection_disabled = !j->boolean(flag);
+    if (root)
+        j->put(root);
+    if (!valid)
+        return respond(h, m, "{\"returnValue\":false,\"errorText\":\"Expected enabled boolean\"}");
+    if (next.black_bar_detection_disabled != target.black_bar_detection_disabled) {
+        if (!target_save(TARGET_PREF, &next))
+            return respond(h, m, "{\"returnValue\":false,\"errorText\":\"Could not save black bar detection\"}");
+        apply_hot_target(&next);
+    }
+    return respond(h, m, "{\"returnValue\":true}");
+}
+
+static bool black_bar_detection(void *h, void *m, void *ctx) {
+    (void)ctx;
+    return black_bar_detection_request(h, m, payload(m));
+}
+
 static bool settings_request(void *h, void *m, const char *p) {
     TargetConfig next = target;
     if (!playback_json.lib || !target_parse(&playback_json, p, &next))
@@ -170,14 +203,14 @@ static bool settings_request(void *h, void *m, const char *p) {
     if (!target_save(TARGET_PREF, &next))
         return respond(
             h, m, "{\"returnValue\":false,\"errorText\":\"Could not save receiver settings\"}");
-    /* A cutoff-only change can take effect on the next sample without a
-     * receiver reconnect or a gap in LED output. */
-    if (next.black_cutoff != target.black_cutoff && !strcmp(next.host, target.host) &&
+    /* Histogram settings take effect without reconnecting the receiver. */
+    if ((next.black_cutoff != target.black_cutoff ||
+         next.black_bar_detection_disabled != target.black_bar_detection_disabled) && !strcmp(next.host, target.host) &&
         !strcmp(next.receiver, target.receiver) && !strcmp(next.output, target.output) &&
         !strcmp(next.token, target.token) && next.port == target.port &&
         next.piccap_port == target.piccap_port &&
         target_capture_interval(&next) == target_capture_interval(&target)) {
-        target = next;
+        apply_hot_target(&next);
         return respond(h, m, "{\"returnValue\":true}");
     }
     bool active = capture_ctx.handle || receiver_runtime.starting || piccap_owned || retries.due;

@@ -41,12 +41,16 @@ var targetDirty = false,
 var profileDirty = false,
     profile = 'auto',
     geometry = 'rim',
-    advancedProfile = false;
+    advancedProfile = false,
+    responseCalibrationAvailable = false,
+    pendingResponse = null;
 var profileNames = {
     auto: 'Auto',
     g4: 'LG G4 (measured)',
     average: 'Average (uniform)',
-    custom: 'Custom model'
+    custom: 'Custom model',
+    'g4-overlap': 'LG G4 (experimental edge correction)',
+    measured: 'Measured LED positions'
 };
 var geometryNames = {
     rim: 'Perimeter',
@@ -65,14 +69,14 @@ function showProfile() {
 }
 
 function call(method, done, data) {
-    if (!versionCompatible && ['start', 'autostart', 'handover', 'settings', 'testConnection', 'calibration', 'calibrationSession', 'calibrationDraft', 'mqttSettings', 'sourceMode'].indexOf(method) >= 0 && !(method === 'calibrationSession' && data && data.enabled === false)) {
+    if (!versionCompatible && ['start', 'autostart', 'handover', 'settings', 'blackBarDetection', 'testConnection', 'calibration', 'calibrationSession', 'calibrationDraft', 'mqttSettings', 'sourceMode'].indexOf(method) >= 0 && !(method === 'calibrationSession' && data && data.enabled === false)) {
         done({
             returnValue: false,
             errorText: 'App and service versions do not match. Finish the update first.'
         });
         return;
     }
-    if (['start', 'stop', 'autostart', 'handover', 'settings', 'testConnection', 'calibration'].indexOf(method) >= 0) clearActionError();
+    if (['start', 'stop', 'autostart', 'handover', 'settings', 'blackBarDetection', 'testConnection', 'calibration'].indexOf(method) >= 0) clearActionError();
     callUri('luna://org.webosbrew.histogramhyperion.service/' + method, function(result) {
         if (method !== 'status' && result.returnValue === false) showActionError(result.errorText || 'The action failed.');
         done(result);
@@ -120,6 +124,21 @@ function callUri(uri, done, data) {
 }
 
 function display(result) {
+    var blackBars = document.getElementById('blackBarDetection');
+    if (blackBars) {
+        var supported = result.blackBarDetectionWritable === true && typeof result.blackBarDetection === 'boolean';
+        blackBars.disabled = blackBars.changing || !supported ||
+            (typeof HYPERDRM_APP_VERSION !== 'undefined' && result.version !== HYPERDRM_APP_VERSION);
+        if (supported) {
+            blackBars.setAttribute('aria-checked', String(result.blackBarDetection));
+            blackBars.textContent = 'Black bar detection: ' + (result.blackBarDetection ? 'On' : 'Off');
+        }
+    }
+    var responseButton = document.getElementById('calibrateOverlap');
+    if (responseButton && typeof result.responseCalibrationSupported === 'boolean') {
+        responseButton.style.display = result.responseCalibrationSupported ? 'inline-block' : 'none';
+        responseCalibrationAvailable = result.responseCalibrationAvailable === true;
+    }
     if (typeof result.uid === 'number') {
         document.getElementById('grantRoot').style.display = result.uid === 0 ? 'none' : 'inline-block';
         document.getElementById('rootHint').style.display = result.uid === 0 ? 'none' : 'block';
@@ -193,7 +212,7 @@ function display(result) {
     else if (result.returnValue !== false) document.getElementById('status').textContent += ' · No current color output';
     if (result.output === 'flatbuffer') document.getElementById('status').textContent += result.flatbufferConnected ? ' · FlatBuffer connected, every LED instance' : ' · FlatBuffer connecting';
     else if (result.returnValue !== false) document.getElementById('status').textContent += ' · No current color output';
-    if (result.blackBarDetection && result.running) document.getElementById('status').textContent += result.letterboxDetected ? ' · Top/bottom black bars detected' : ' · Full-screen capture';
+    if (typeof result.blackBarDetection === 'boolean' && result.running) document.getElementById('status').textContent += result.letterboxDetected ? ' · Top/bottom black bars detected' : ' · Full-screen capture';
     if (result.spatialInterpolation) document.getElementById('status').textContent += ' · Smooth color transitions';
     if (result.spatialGeometry === 'rectangles') document.getElementById('status').textContent += ' · Region rectangles (1/area)';
     if (result.holdingColors) document.getElementById('status').textContent += ' · Holding last valid colors (missing data)';
@@ -336,6 +355,16 @@ document.getElementById('handover').onclick = function() {
         enabled: button.getAttribute('aria-checked') !== 'true'
     });
 };
+var blackBarsButton = document.getElementById('blackBarDetection');
+if (blackBarsButton) blackBarsButton.onclick = function() {
+    if (this.disabled) return;
+    var button = this;
+    button.changing = button.disabled = true;
+    call('blackBarDetection', function() {
+        button.changing = false;
+        call('status', display);
+    }, { enabled: button.getAttribute('aria-checked') !== 'true' });
+};
 ['host', 'port', 'piccapPort', 'captureInterval', 'blackCutoff', 'token', 'clearToken'].forEach(function(id) {
     document.getElementById(id).addEventListener('input', function() {
         targetDirty = true;
@@ -418,7 +447,9 @@ document.getElementById('testConnection').onclick = function() {
     });
 };
 document.getElementById('profile').onclick = function() {
-    var keys = ['auto', 'g4', 'average', 'custom'];
+    var keys = Object.keys(profileNames).filter(function(key) {
+        return key !== 'measured' || responseCalibrationAvailable || pendingResponse;
+    });
     profile = keys[(keys.indexOf(profile) + 1) % keys.length];
     profileDirty = true;
     showProfile();
@@ -442,6 +473,9 @@ document.getElementById('saveProfile').onclick = function() {
             showActionError('Custom profile must be valid JSON.');
             return;
         }
+    } else if (profile === 'measured' && pendingResponse) {
+        data.responseModel = pendingResponse.responseModel;
+        data.response = pendingResponse.response;
     }
     button.disabled = true;
     call('calibration', function(r) {
@@ -451,6 +485,7 @@ document.getElementById('saveProfile').onclick = function() {
             return;
         }
         profileDirty = false;
+        if (data.response) pendingResponse = null;
         call('status', display);
     }, data);
 };
@@ -475,6 +510,6 @@ document.getElementById('geometry').onclick = function() {
     }
     showProfile();
 };
-setupRemoteNavigation(['overviewTab', 'receiverTab', 'calibrationTab', 'reloadService', 'grantRoot', 'start', 'stop', 'refresh', 'autostart', 'handover', 'sourceMode', 'calibrationShortcut', 'receiver', 'output', 'hostField', 'portField', 'piccapPortField', 'captureIntervalField', 'blackCutoffField', 'tokenField', 'clearToken', 'saveTarget', 'testConnection', 'mqttEnabled', 'mqttHostField', 'mqttPortField', 'mqttUserField', 'mqttPasswordField', 'mqttClearPassword', 'mqttSave', 'mqttRestoreRoot', 'calibrate', 'validateCalibration', 'profile', 'saveProfile', 'editProfile', 'geometry', 'customProfileField', 'cancelCalibration'].map(function(id) {
+setupRemoteNavigation(['overviewTab', 'receiverTab', 'calibrationTab', 'reloadService', 'grantRoot', 'start', 'stop', 'refresh', 'autostart', 'handover', 'sourceMode', 'calibrationShortcut', 'receiver', 'output', 'hostField', 'portField', 'piccapPortField', 'captureIntervalField', 'blackCutoffField', 'tokenField', 'clearToken', 'saveTarget', 'testConnection', 'blackBarDetection', 'mqttEnabled', 'mqttHostField', 'mqttPortField', 'mqttUserField', 'mqttPasswordField', 'mqttClearPassword', 'mqttSave', 'mqttRestoreRoot', 'calibrateOverlap', 'calibrate', 'validateCalibration', 'profile', 'saveProfile', 'editProfile', 'geometry', 'customProfileField', 'cancelCalibration'].map(function(id) {
     return document.getElementById(id);
 }).filter(Boolean), document, window);

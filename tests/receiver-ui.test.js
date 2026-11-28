@@ -2,16 +2,24 @@
 const assert=require('assert'),fs=require('fs'),vm=require('vm');
 const ids=['reloadService','versionWarning','host','port','piccapPort','captureInterval','blackCutoff','receiver','output','token','clearToken','endpoint','handover','autostart','error','status','regions','start','stop','refresh','saveTarget','testConnection','testResult','diagnostics','profile','geometry','customEditor','customProfile','saveProfile','profileStatus','calibrate','validateCalibration','cancelCalibration','editProfile','customProfileField','overviewTab','receiverTab','calibrationTab','calibrationShortcut','hostField','portField','piccapPortField','captureIntervalField','blackCutoffField','tokenField','grantRoot','rootHint'];
 const elements={};
+ids.push('blackBarDetection');
 ids.forEach(id=>elements[id]={value:'',textContent:'',disabled:false,checked:false,attributes:{},style:{},addEventListener(){},focus(){},appendChild(){},setAttribute(k,v){this.attributes[k]=v;},getAttribute(k){return this.attributes[k];}});
 const requests=[];
 const status={returnValue:true,version:'0.9.0',host:'127.0.0.1',port:19444,piccapPort:19400,receiver:'HyperHDR',tokenSet:true,piccapInstalled:true,autostart:true,captureState:'Histogram',playbackProtection:'protected',connectionTest:{state:'Passed',ledCount:120,elapsedMs:300,error:''},uid:0,calibrationProfile:'auto',effectiveCalibration:'g4',tvModel:'OLED65G42LW.DEUQLJP',customModel:'',customPoints:[]};
 class Bridge {
- call(uri,data){requests.push({uri,data:JSON.parse(data)});this.onservicecallback(JSON.stringify(uri.endsWith('/status')?status:{returnValue:true}));}
+ call(uri,data){const args=JSON.parse(data);requests.push({uri,data:args});if(uri.endsWith('/blackBarDetection'))status.blackBarDetection=args.enabled;this.onservicecallback(JSON.stringify(uri.endsWith('/status')?status:{returnValue:true}));}
  cancel(){}
 }
 let controls;
 const context={PalmServiceBridge:Bridge,document:{getElementById:id=>elements[id],createElement:()=>({style:{}})},window:{},setTimeout:()=>1,clearTimeout(){},setInterval(){},setupRemoteNavigation(list){controls=list;}};
 vm.runInNewContext(fs.readFileSync('app/app.js','utf8'),context);
+assert(elements.blackBarDetection.disabled);
+status.blackBarDetectionWritable=true;status.blackBarDetection=true;context.display(status);
+assert(controls.includes(elements.blackBarDetection) && !elements.blackBarDetection.disabled);
+elements.blackBarDetection.onclick();
+assert(requests.some(r=>r.uri.endsWith('/blackBarDetection') && r.data.enabled===false));
+assert.equal(elements.blackBarDetection.getAttribute('aria-checked'),'false');
+assert(elements.blackBarDetection.textContent.endsWith('Off'));
 assert(elements.testResult.textContent.includes('120 LEDs'));
 const passed=status.connectionTest;
 status.connectionTest={state:'Testing FlatBuffer',transport:'FlatBuffer',busy:true};

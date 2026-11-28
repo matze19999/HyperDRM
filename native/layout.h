@@ -81,6 +81,29 @@ static LedBlend layout_rectangle_blend(double x, double y) {
  * otherwise the perimeter rim interpolation. Both produce one LedBlend per
  * point, so the plane and the receiver LED mapping share the same geometry. */
 static inline LedBlend layout_point_blend(double x, double y) {
+    if (calibration_effective() == CAL_MEASURED) {
+        double perimeter = screen_perimeter(x, y);
+        unsigned edge = (unsigned)perimeter;
+        float position = (float)(perimeter - edge), ratio;
+        if (edge >= 2)
+            position = 1 - position;
+        unsigned row = edge * EDGE_SAMPLES + edge_anchor_interval(position, &ratio);
+        float first = 0, second = 0;
+        unsigned char a = 0, b = 0;
+        for (unsigned r = 0; r < EDGE_REGIONS; ++r) {
+            float value = (1 - ratio) * calibration.response[row][r] + ratio * calibration.response[row + 1][r];
+            if (value > first) {
+                second = first;
+                b = a;
+                first = value;
+                a = r;
+            } else if (value > second) {
+                second = value;
+                b = r;
+            }
+        }
+        return (LedBlend){a, b, first > 0 ? (unsigned)(65535 * second / (first + second) + .5f) : 0};
+    }
     return calibration_rectangles() ? layout_rectangle_blend(x, y) : layout_blend(x, y);
 }
 /* Use the TV's JSON-C library; validate every rectangle before replacing the

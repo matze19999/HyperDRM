@@ -207,9 +207,20 @@ While a capture session runs, a separate nonblocking authenticated JSON connecti
 
 ## TV model profiles (0.10.0)
 
-Select Auto, LG G4 (measured), Average (uniform), or Custom model in TV calibration and select Save profile. The app obtains the model identifier through LG's system-property service. Auto selects an imported profile matching that exact identifier, then the built-in G4 series profile, otherwise uniform average colors. Unknown models are not assigned an invented spatial calibration. A manual G4 selection is available when model detection is unavailable.
+In **TV calibration**, choose **Measure LED positions** and keep the test video full-screen. The wizard measures 28 edge positions and five interior positions using the TV's native histogram capture. It checks five separate fields before offering **Save profile**. The independent fields use different positions and colors. A failed measurement leaves the saved profile active.
+
+**Measured LED positions** uses the measured response on that exact TV model with HyperHDR or Hyperion. **Auto** prefers that profile, then an exact custom model profile, then the built-in G4 profile. Uncalibrated TVs use average colors if there is no suitable model profile. The TV needs a supported webOS histogram API that exposes spatial regions. Whole-screen histograms cannot measure separate LED positions.
 
 Custom imports accept measured model JSON with 2-16 sorted clockwise perimeter points and histogram region indices 0-15. Profiles persist privately in the own service container and apply to the current session without restarting capture. See [profile format and calibration guidance](profiles/README.md). Only G4 hardware has been validated by the developer; the LG OLED55C3LA community report above does not validate a spatial profile. Importing a profile does not guarantee histogram support on another TV. Color calibration remains in Hyperion/HyperHDR.
+
+**LG G4 (experimental edge correction)** is an opt-in test profile for HyperHDR.
+It fits up to two highlights on dark backgrounds against the combined response
+of the 16 regions. Intermediate positions use responses interpolated between
+measured fields. Broader or poorly matched scenes use perimeter mapping. At an
+ambiguous lower corner, only the two adjoining corner sections are eligible.
+The measurements are from one OLED65G42LW. Use **Auto** for the regular G4 profile.
+
+The model-specific wizard's H.264 stimulus can be rebuilt with `python build_response_calibration_video.py --ffmpeg /path/to/ffmpeg`. **Measure rim anchors** is available for custom perimeter profiles.
 
 ## Color continuity and guided calibration
 
@@ -306,6 +317,8 @@ tests do not replace real LG capture and remote-control validation on a TV.
 Set **Black cutoff** in the Receiver panel from 0 to 64 (default 16). A value of 0 disables the filter. With a positive cutoff, values at or below it become black and fade in up to twice that value, above which colors stay unchanged. This applies only to histogram output; PicCap, receiver calibration and raw calibration samples are unchanged.
 
 Rectangle geometry computes histogram means and spatial blends in linear light (IEC 61966-2-1). This can raise the output of mixed dark and bright samples. Rim geometry preserves the existing color response.
+
+**Receiver → HyperDRM capture → Black bar detection** switches HyperDRM's detection on or off. Home Assistant exposes the same setting as **Black bar detection** on the HyperDRM MQTT device. The setting defaults to off on a fresh installation and is saved on the TV. Updates preserve the saved choice. Older configurations without the setting retain their original enabled behavior. Turning it off returns HyperDRM to full-screen sampling. The separate **Black bars** sensor reports detected bars, and HyperHDR manages its own detection setting.
 
 Thin letterbox detection compares both edges against lit interior histogram samples and requires a consistently dark upper edge for at least two seconds. Histogram probes cannot determine the exact bar height or guarantee detection on every scene.
 

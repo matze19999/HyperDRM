@@ -36,8 +36,17 @@ int main(void){
  assert(t.black_cutoff==0);
  assert(!target_parse(&j,"{\"host\":\"::1\",\"port\":65535,\"receiver\":\"HyperHDR\",\"blackCutoff\":65}",&t));
  assert(!target_parse(&j,"{\"host\":\"::1\",\"port\":65535,\"receiver\":\"HyperHDR\",\"blackCutoff\":null}",&t));
+ assert(!target_load(&j,file,&t) && t.black_bar_detection_disabled);
+ const char *legacy="{\"host\":\"::1\",\"port\":65535,\"receiver\":\"HyperHDR\"}";
+ assert(atomic_replace(file,legacy,strlen(legacy))!=SAVE_UNCHANGED);
+ assert(target_load(&j,file,&t) && !t.black_bar_detection_disabled);
+ assert(target_parse(&j,"{\"host\":\"::1\",\"port\":65535,\"receiver\":\"HyperHDR\",\"blackBarDetection\":false}",&t));
+ assert(t.black_bar_detection_disabled);
+ assert(!target_parse(&j,"{\"host\":\"::1\",\"port\":65535,\"receiver\":\"HyperHDR\",\"blackBarDetection\":null}",&t));
+ assert(t.black_bar_detection_disabled);
  assert(target_save(file,&t));struct stat st;assert(stat(file,&st)==0 && (st.st_mode&0777)==0600);
  TargetConfig restored=target;assert(target_load(&j,file,&restored));assert(restored.capture_interval==100 && restored.black_cutoff==0);assert(!strcmp(restored.host,"::1") && restored.port==65535 && !strcmp(restored.token,"test-token"));
+ assert(restored.black_bar_detection_disabled);
  /* Output transport: JSON addresses one HyperHDR instance, FlatBuffer reaches all. */
  assert(!strcmp(restored.output,"json") && !target_flatbuffer(&restored));
  assert(target_parse(&j,"{\"host\":\"::1\",\"port\":65535,\"receiver\":\"HyperHDR\",\"output\":\"flatbuffer\"}",&restored));

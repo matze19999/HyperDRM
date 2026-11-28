@@ -62,12 +62,16 @@ static bool status(void *h, void *m, void *ctx) {
                          calibration.rects[i].y0, calibration.rects[i].x1, calibration.rects[i].y1);
     used += snprintf(json + used, sizeof(json) - used, "],\"customRectangleCount\":%u,\"spatialRectangleCount\":%u,"
                                                              "\"customGeometry\":\"%s\","
-                     "\"spatialGeometry\":\"%s\",\"layoutUpdates\":%u,"
+                     "\"spatialGeometry\":\"%s\",\"overlapApplied\":%s,\"layoutUpdates\":%u,"
+                     "\"responseCalibrationSupported\":true,\"responseCalibrationAvailable\":%s,"
                      "\"lastLayoutCheckAgeMs\":%lld,\"layoutError\":\"%s\","
                      "\"piccapFallbacks\":%u,\"piccapCooldownMs\":%llu,",
                      calibration.rect_count, spatial_rectangles,
                      calibration.rect_geometry ? "rectangles" : "rim",
-                     calibration_rectangles() ? "rectangles" : "rim", layout_updates,
+                     frame_overlap_response() ? calibration_key(calibration_effective()) : calibration_rectangles() ? "rectangles" : "rim",
+                     frame_overlap_response() && capture_ctx.color_valid && capture_ctx.overlap_applied ? "true" : "false",
+                     layout_updates,
+                     calibration_measured_available() ? "true" : "false",
                      last_layout_check ? (long long)(now - last_layout_check) : -1, layout_error,
                      piccap_fallbacks,
                      (unsigned long long)(handover_cooldown > now ? handover_cooldown - now : 0));
@@ -143,11 +147,12 @@ static bool status(void *h, void *m, void *ctx) {
                          capture_ctx.black_percent[i]);
     snprintf(json + used, sizeof(json) - used,
              "],\"preset\":%u,\"saturationGain\":1.0,\"brightnessGain\":1.0,"
-             "\"spatialInterpolation\":%s,\"blackBarDetection\":true,\"autostart\":%s,"
+             "\"spatialInterpolation\":%s,\"blackBarDetection\":%s,\"blackBarDetectionWritable\":true,\"autostart\":%s,"
              "\"retryScheduled\":%s,\"retryPaused\":%s,\"retryBlocked\":%s,\"retryAttempts\":%u,"
              "\"piccapInstalled\":%s,\"piccapHandover\":%s,\"piccapConnected\":%s,\"activeSource\":"
              "\"%s\",\"playbackProtection\":\"%s\",\"letterboxDetected\":%s}",
              capture_ctx.preset, receiver_layout.interpolation ? "true" : "false",
+             target.black_bar_detection_disabled ? "false" : "true",
              boot_enabled() ? "true" : "false", retries.due ? "true" : "false",
              retries.paused ? "true" : "false", retries.blocked ? "true" : "false",
              retries.attempts, piccap_installed() ? "true" : "false",
@@ -156,6 +161,6 @@ static bool status(void *h, void *m, void *ctx) {
              protection == PLAYBACK_PROTECTED ? "protected"
              : protection == PLAYBACK_CLEAR   ? "non-secure decoder"
                                               : "unknown",
-             capture_ctx.handle && capture_ctx.letterbox_mode ? "true" : "false");
+             !target.black_bar_detection_disabled && capture_ctx.handle && capture_ctx.letterbox_mode ? "true" : "false");
     return respond(h, m, json);
 }

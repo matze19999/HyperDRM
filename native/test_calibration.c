@@ -22,5 +22,24 @@ int main(void){
  unsigned char input[16][3],output[16][3];for(unsigned i=0;i<16;i++)for(unsigned c=0;c<3;c++)input[i][c]=i*10+c;
  calibration_colors(input,output);for(unsigned i=0;i<16;i++)for(unsigned c=0;c<3;c++)assert(output[i][c]==75+c);
  calibration.kind=CAL_G4;calibration_colors(input,output);assert(!memcmp(input,output,48));
+ assert(calibration_parse(&json,"{\"profile\":\"g4-overlap\"}",&calibration));
+ assert(calibration_effective()==CAL_AVERAGE);
+ assert(calibration_save(path,&calibration));
+ calibration=(Calibration){0};calibration_load(&json,path);unlink(path);
+ strcpy(tv_model,"OLED65G42LW.DEUQLJP");assert(calibration_effective()==CAL_G4_OVERLAP);
+ assert(!calibration_parse(&json,"{\"profile\":\"measured\",\"responseModel\":\"OLED65C42LA\",\"response\":[[1000]]}",&calibration));
+ assert(calibration_effective()==CAL_G4_OVERLAP);
+ strcpy(calibration.response_model,"OLED65C42LA");
+ for(unsigned j=0;j<EDGE_RESPONSE_ROWS;j++) calibration.response[j][(j+2)%EDGE_REGIONS]=1000;
+ calibration.kind=CAL_MEASURED;
+ assert(calibration_save(path,&calibration));
+ calibration=(Calibration){0};calibration_load(&json,path);unlink(path);
+ assert(calibration.kind==CAL_MEASURED && !calibration_measured_available());
+ assert(calibration_effective()==CAL_G4);
+ strcpy(tv_model,"OLED65C42LA");assert(calibration_effective()==CAL_MEASURED);
+ assert(calibration.response[16][2]==1000);
+ LedBlend learned=layout_point_blend(.10,0);assert(learned.a==2 && learned.weight==0);
+ assert(calibration_parse(&json,"{\"profile\":\"auto\"}",&calibration));
+ assert(calibration_effective()==CAL_MEASURED);
  puts("PASS: G4 detection, custom model profile, rim mapping, invalid profile rejection, persistence and honest average fallback");return 0;
 }

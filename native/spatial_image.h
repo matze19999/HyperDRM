@@ -5,6 +5,8 @@
 #include "layout.h"
 #include "interpolation.h"
 #include "color_boost.h"
+#include "dark_color.h"
+#include "edge_overlap.h"
 enum { SPATIAL_WIDTH = 160, SPATIAL_HEIGHT = 90, SPATIAL_PIXELS = SPATIAL_WIDTH * SPATIAL_HEIGHT };
 /* Synthetic color plane from histogram samples, never captured video pixels.
  * HyperHDR 22 treats JSON color as a solid color; image input retains space.
@@ -40,10 +42,54 @@ static void spatial_plane(const unsigned char regions[16][3], unsigned char *out
         out[i * 3 + 2] = color[2];
     }
 }
-static char *spatial_image_command_duration(const unsigned char regions[16][3], unsigned priority,
-                                            unsigned duration) {
-    static unsigned char plane[SPATIAL_PIXELS * 3];
-    spatial_plane(regions, plane);
+static inline bool spatial_edge_response(const unsigned char regions[16][3], unsigned char *out, unsigned cutoff,
+                                         const EdgeResponse *response, unsigned revision) {
+    EdgeFit fit;
+    if (!fit_edge_response(regions, &fit, response, revision))
+        return false;
+    unsigned char background[3], accent[2][3];
+    memcpy(background, fit.background, sizeof(background));
+    dark_color_filter(background, cutoff);
+    for (unsigned i = 0; i < fit.count; ++i) {
+        for (unsigned c = 0; c < 3; ++c) {
+            float value = fit.background[c] + fit.accents[i].rgb[c] * fit.accents[i].location->peak;
+            accent[i][c] = (unsigned char)(value > 255 ? 255 : value + .5f);
+        }
+        dark_color_filter(accent[i], cutoff);
+    }
+    for (unsigned y = 0; y < SPATIAL_HEIGHT; y++)
+        for (unsigned x = 0; x < SPATIAL_WIDTH; x++) {
+            double u = (x + .5) / SPATIAL_WIDTH, v = (y + .5) / SPATIAL_HEIGHT;
+            double t = screen_perimeter(u, v);
+            unsigned edge = (unsigned)t;
+            float along = (float)(t - edge);
+            if (edge >= 2)
+                along = 1 - along;
+            float gains[2] = {0};
+            for (unsigned i = 0; i < fit.count; ++i) {
+                const EdgeLocation *location = fit.accents[i].location;
+                if (location->edge == edge) {
+                    float distance = fabsf(along - location->position);
+                    float gain = (.115f - distance) * 20;
+                    gains[i] = gain < 0 ? 0 : gain > 1 ? 1 : gain;
+                }
+            }
+            for (unsigned c = 0; c < 3; c++) {
+                float value = background[c];
+                for (unsigned i = 0; i < fit.count; ++i)
+                    value += gains[i] * (accent[i][c] - background[c]);
+                out[3 * (y * SPATIAL_WIDTH + x) + c] = (unsigned char)(value > 255 ? 255 : value + .5f);
+            }
+        }
+    return true;
+}
+
+static inline bool spatial_g4_overlap(const unsigned char regions[16][3], unsigned char *out, unsigned cutoff) {
+    return spatial_edge_response(regions, out, cutoff, &g4_response, 0);
+}
+
+static char *spatial_rgb_command_format(const unsigned char *plane, unsigned priority, unsigned duration,
+                                        const char *format) {
     const char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     size_t capacity = SPATIAL_PIXELS * 4 + 256;
     char *line = malloc(capacity);
@@ -51,9 +97,9 @@ static char *spatial_image_command_duration(const unsigned char regions[16][3], 
         return NULL;
     size_t used = snprintf(line, capacity,
                            "{\"command\":\"image\",\"priority\":%u,\"duration\":%u,\"origin\":"
-                           "\"HyperDRM\",\"imagewidth\":%u,\"imageheight\":%u,\"format\":\"rgb\","
+                           "\"HyperDRM\",\"imagewidth\":%u,\"imageheight\":%u,\"format\":\"%s\","
                            "\"name\":\"Histogram colors\",\"imagedata\":\"",
-                           priority, duration, SPATIAL_WIDTH, SPATIAL_HEIGHT);
+                           priority, duration, SPATIAL_WIDTH, SPATIAL_HEIGHT, format);
     for (unsigned i = 0; i < SPATIAL_PIXELS; i++) {
         const unsigned char *color = plane + i * 3;
         line[used++] = alphabet[color[0] >> 2];
@@ -66,6 +112,15 @@ static char *spatial_image_command_duration(const unsigned char regions[16][3], 
     line[used++] = '\n';
     line[used] = 0;
     return line;
+}
+static inline char *spatial_rgb_command(const unsigned char *plane, unsigned priority, unsigned duration) {
+    return spatial_rgb_command_format(plane, priority, duration, "rgb");
+}
+static char *spatial_image_command_duration(const unsigned char regions[16][3], unsigned priority,
+                                            unsigned duration) {
+    static unsigned char plane[SPATIAL_PIXELS * 3];
+    spatial_plane(regions, plane);
+    return spatial_rgb_command(plane, priority, duration);
 }
 static inline char *spatial_image_command(const unsigned char regions[16][3], unsigned priority) {
     return spatial_image_command_duration(regions, priority, 1500);
